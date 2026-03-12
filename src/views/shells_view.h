@@ -30,26 +30,42 @@ public:
 
 private:
     Project& project_;
-    ShellsFile& shells_;
     GtkWidget* root_;
-    GtkWidget* listbox_;
 
+    // Left panel: shell files
+    GtkWidget* file_listbox_;
+    GtkWidget* btn_save_;
+
+    // Right panel: shells in selected file
+    GtkWidget* file_label_;
+    GtkWidget* shell_listbox_;
+
+    // Editor
+    GtkWidget* editor_grid_;
     GtkWidget* entry_name_;
     GtkWidget* entry_path_;
     GtkWidget* entry_exec_arg_;
     GtkWidget* entry_source_cmd_;
-    GtkWidget* editor_grid_;
 
-    int current_idx_ = -1;
+    int current_file_idx_ = -1;
+    int current_shell_idx_ = -1;
     bool loading_ = false;
+    bool file_dirty_ = false;
 
-    void populate_list();
+    void populate_file_list();
+    void populate_shell_list();
     void load_shell(int idx);
     void clear_editor();
+    void mark_file_dirty();
 
-    static void on_shell_selected(GtkListBox* box, GtkListBoxRow* row, gpointer data);
-    static void on_add_shell(GtkButton* btn, gpointer data);
+    static void on_file_selected(GtkListBox* box, GtkListBoxRow* row, gpointer data);
+    static void on_new_file(GtkButton* btn, gpointer data);
+    static void on_new_file_response(GObject* source, GAsyncResult* res, gpointer data);
+    static void on_delete_file(GtkButton* btn, gpointer data);
+    static void on_new_shell(GtkButton* btn, gpointer data);
     static void on_delete_shell(GtkButton* btn, gpointer data);
+    static void on_move_up(GtkButton* btn, gpointer data);
+    static void on_move_down(GtkButton* btn, gpointer data);
 };
 
 }

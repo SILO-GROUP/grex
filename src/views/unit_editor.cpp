@@ -108,12 +108,12 @@ void UnitEditor::clear() {
 
     gtk_label_set_text(GTK_LABEL(name_display_), "");
     gtk_editable_set_text(GTK_EDITABLE(entry_comment_), "");
-    gtk_widget_set_sensitive(entry_comment_, FALSE);
-    gtk_widget_set_sensitive(btn_edit_unit_, FALSE);
+    gtk_widget_set_sensitive(root_, FALSE);
     clear_dirty();
 }
 
 void UnitEditor::load(Task* task, Unit* unit) {
+    gtk_widget_set_sensitive(root_, TRUE);
     g_signal_handlers_disconnect_by_data(entry_comment_, this);
     current_task_ = task;
     current_unit_ = unit;
@@ -142,16 +142,15 @@ void UnitEditor::load(Task* task, Unit* unit) {
 }
 
 void UnitEditor::save_current() {
-    if (current_unit_name_.empty()) return;
-    auto* unit = project_.find_unit(current_unit_name_);
-    if (!unit) return;
-    current_unit_ = unit;
-    if (project_.is_unit_name_taken(current_unit_->name, current_unit_)) {
-        project_.report_status("Error: unit name '" + current_unit_->name + "' conflicts with another unit");
+    if (!current_unit_) {
+        project_.report_status("Error: no unit loaded to save");
         return;
     }
     auto* uf = project_.find_unit_file(current_unit_->name);
-    if (!uf) return;
+    if (!uf) {
+        project_.report_status("Error: cannot find unit file for '" + current_unit_->name + "'");
+        return;
+    }
     try {
         uf->save();
         clear_dirty();
@@ -195,10 +194,19 @@ void UnitEditor::on_edit_unit(GtkButton*, gpointer data) {
 
     auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
     auto result = show_unit_properties_dialog(parent, self->current_unit_,
-        self->project_, self->grex_config_, self->project_.shells.shells);
+        self->project_, self->grex_config_, self->project_.all_shells());
 
-    if (result == UnitDialogResult::Save)
+    if (result == UnitDialogResult::Save) {
+        // Sync state in case the unit name changed in the dialog
+        auto new_name = self->current_unit_->name;
+        self->current_unit_name_ = new_name;
+        if (self->current_task_)
+            self->current_task_->name = new_name;
+        gtk_label_set_text(GTK_LABEL(self->name_display_), new_name.c_str());
+        if (self->name_cb_)
+            self->name_cb_(new_name, self->name_cb_data_);
         self->mark_dirty();
+    }
 }
 
 void UnitEditor::on_select_unit(GtkButton*, gpointer data) {

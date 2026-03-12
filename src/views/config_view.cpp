@@ -48,13 +48,13 @@ ConfigView::ConfigView(Project& project) : project_(project) {
     // === Config file label + Open/Close buttons ===
     config_label_ = gtk_label_new(nullptr);
     gtk_label_set_xalign(GTK_LABEL(config_label_), 0.0f);
-    gtk_widget_add_css_class(config_label_, "title-3");
     gtk_box_append(GTK_BOX(box), config_label_);
 
-    auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    btn_open_ = gtk_button_new_with_label("Open Config");
-    btn_create_ = gtk_button_new_with_label("Create Config");
-    btn_close_ = gtk_button_new_with_label("Close Config");
+    auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(btn_row, "linked");
+    btn_open_ = gtk_button_new_with_label("Open");
+    btn_create_ = gtk_button_new_with_label("Create");
+    btn_close_ = gtk_button_new_with_label("Close");
     gtk_widget_set_hexpand(btn_open_, TRUE);
     gtk_widget_set_hexpand(btn_create_, TRUE);
     gtk_widget_set_hexpand(btn_close_, TRUE);
@@ -67,66 +67,71 @@ ConfigView::ConfigView(Project& project) : project_(project) {
     g_signal_connect(btn_create_, "clicked", G_CALLBACK(on_create_config), this);
     g_signal_connect(btn_close_, "clicked", G_CALLBACK(on_close_config), this);
 
-    gtk_box_append(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+    // === Config content — greyed out when no config loaded ===
+    config_content_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+
+    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
 
     // === Config fields section ===
     auto* config_header = gtk_label_new(nullptr);
     gtk_label_set_markup(GTK_LABEL(config_header), "<b>Configuration</b>");
     gtk_label_set_xalign(GTK_LABEL(config_header), 0.0f);
-    gtk_box_append(GTK_BOX(box), config_header);
+    gtk_box_append(GTK_BOX(config_content_), config_header);
 
     config_grid_ = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(config_grid_), 8);
     gtk_grid_set_column_spacing(GTK_GRID(config_grid_), 12);
-    gtk_box_append(GTK_BOX(box), config_grid_);
+    gtk_box_append(GTK_BOX(config_content_), config_grid_);
 
     build_config_fields();
 
     // === Resolved paths section ===
-    gtk_box_append(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
 
     auto* resolved_header = gtk_label_new(nullptr);
     gtk_label_set_markup(GTK_LABEL(resolved_header), "<b>Resolved Paths</b>");
     gtk_label_set_xalign(GTK_LABEL(resolved_header), 0.0f);
-    gtk_box_append(GTK_BOX(box), resolved_header);
+    gtk_box_append(GTK_BOX(config_content_), resolved_header);
 
     resolved_grid_ = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(resolved_grid_), 4);
     gtk_grid_set_column_spacing(GTK_GRID(resolved_grid_), 12);
-
-    gtk_box_append(GTK_BOX(box), resolved_grid_);
+    gtk_box_append(GTK_BOX(config_content_), resolved_grid_);
 
     // === Variables section ===
-    gtk_box_append(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
 
     auto* vars_header = gtk_label_new(nullptr);
     gtk_label_set_markup(GTK_LABEL(vars_header), "<b>Variables</b>");
     gtk_label_set_xalign(GTK_LABEL(vars_header), 0.0f);
-    gtk_box_append(GTK_BOX(box), vars_header);
+    gtk_box_append(GTK_BOX(config_content_), vars_header);
 
     auto* vars_desc = gtk_label_new("Set values for variables found in config fields. Environment variables are used automatically.");
     gtk_label_set_xalign(GTK_LABEL(vars_desc), 0.0f);
     gtk_label_set_wrap(GTK_LABEL(vars_desc), TRUE);
-    gtk_box_append(GTK_BOX(box), vars_desc);
+    gtk_widget_add_css_class(vars_desc, "dim-label");
+    gtk_box_append(GTK_BOX(config_content_), vars_desc);
 
     vars_grid_ = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(vars_grid_), 8);
     gtk_grid_set_column_spacing(GTK_GRID(vars_grid_), 12);
-    gtk_box_append(GTK_BOX(box), vars_grid_);
+    gtk_box_append(GTK_BOX(config_content_), vars_grid_);
 
     build_variables_section();
     update_resolved_labels();
 
     // === Save button ===
-    gtk_box_append(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
 
     btn_save_ = gtk_button_new_with_label("Save Config");
     gtk_widget_set_halign(btn_save_, GTK_ALIGN_END);
-    gtk_box_append(GTK_BOX(box), btn_save_);
+    gtk_box_append(GTK_BOX(config_content_), btn_save_);
 
     g_signal_connect(btn_save_, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
         static_cast<ConfigView*>(d)->apply_config();
     }), this);
+
+    gtk_box_append(GTK_BOX(box), config_content_);
 
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(root_), box);
 
@@ -233,8 +238,6 @@ void ConfigView::build_variables_section() {
             if (b->view->rebuilding_) return;
             b->view->project_.resolver.set(b->var_name, gtk_editable_get_text(e));
             b->view->update_resolved_labels();
-            b->view->dirty_ = true;
-            gtk_widget_add_css_class(b->view->btn_save_, "suggested-action");
         }), binding);
 
         row++;
@@ -322,13 +325,7 @@ void ConfigView::apply_config() {
         project_.report_status("Config saved: " + project_.config_path.filename().string());
 
         // reload shells if path now resolves
-        auto sp = project_.resolved_shells_path();
-        if (!sp.empty() && fs::exists(sp)) {
-            project_.shells = ShellsFile::load(sp);
-            project_.report_status("Loaded shells: " + sp.filename().string());
-        } else if (!sp.empty()) {
-            project_.report_status("Error: shells path not found: " + sp.string());
-        }
+        project_.reload_shells();
 
         // notify MainWindow to refresh other views
         if (apply_cb_)
@@ -349,6 +346,7 @@ void ConfigView::update_config_buttons() {
     gtk_widget_set_visible(btn_open_, !has_config);
     gtk_widget_set_visible(btn_create_, !has_config);
     gtk_widget_set_visible(btn_close_, has_config);
+    gtk_widget_set_sensitive(config_content_, has_config);
 }
 
 void ConfigView::refresh() {
@@ -466,6 +464,8 @@ void ConfigView::on_close_config(GtkButton*, gpointer data) {
     if (self->dirty_) {
         auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
         auto result = show_unsaved_dialog(parent);
+        if (result == UnsavedResult::Cancel)
+            return;
         if (result == UnsavedResult::Save)
             self->apply_config();
     }

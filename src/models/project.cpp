@@ -133,13 +133,17 @@ Project Project::load(const fs::path& cfg_path) {
     // scan all config string values for variables, populate from environment
     proj.resolver.scan_and_populate(proj.config.all_string_values());
 
-    // auto-load shells if path resolves
+    // auto-load all shells files from shells directory
     auto sp = proj.resolved_shells_path();
-    if (!sp.empty() && fs::exists(sp)) {
-        try {
-            proj.shells = ShellsFile::load(sp);
-        } catch (const std::exception& e) {
-            // no status_cb set yet at load time — caller handles
+    if (!sp.empty() && fs::is_directory(sp)) {
+        for (auto& entry : fs::directory_iterator(sp)) {
+            if (entry.path().extension() == ".shells") {
+                try {
+                    proj.shell_files.push_back(ShellsFile::load(entry.path()));
+                } catch (const std::exception&) {
+                    // no status_cb set yet at load time
+                }
+            }
         }
     }
 
@@ -160,33 +164,28 @@ void Project::load_plan(const fs::path& plan_path) {
     }
 }
 
-void Project::load_shells(const fs::path& shells_path) {
-    shells = ShellsFile();
-    try {
-        shells = ShellsFile::load(shells_path);
-        report_status("Loaded shells: " + shells_path.filename().string());
-    } catch (const std::exception& e) {
-        report_status("Error: failed to load shells: " + std::string(e.what()));
-        throw;
+void Project::reload_shells() {
+    auto sp = resolved_shells_path();
+    if (sp.empty()) return;
+    if (!fs::is_directory(sp)) return;
+
+    shell_files.clear();
+    for (auto& entry : fs::directory_iterator(sp)) {
+        if (entry.path().extension() == ".shells") {
+            try {
+                shell_files.push_back(ShellsFile::load(entry.path()));
+            } catch (const std::exception& e) {
+                report_status("Error loading shells: " + std::string(e.what()));
+            }
+        }
     }
 }
 
-void Project::reload_shells() {
-    auto sp = resolved_shells_path();
-    if (sp.empty()) {
-        report_status("Error: shells path not resolved");
-        return;
-    }
-    if (!fs::exists(sp)) {
-        report_status("Error: shells file not found: " + sp.string());
-        return;
-    }
-    try {
-        shells = ShellsFile::load(sp);
-        report_status("Loaded shells: " + sp.filename().string());
-    } catch (const std::exception& e) {
-        report_status("Error: failed to load shells: " + std::string(e.what()));
-    }
+std::vector<ShellDef> Project::all_shells() const {
+    std::vector<ShellDef> result;
+    for (auto& sf : shell_files)
+        result.insert(result.end(), sf.shells.begin(), sf.shells.end());
+    return result;
 }
 
 void Project::save_config() {
@@ -201,15 +200,6 @@ void Project::save_plans() {
     }
 }
 
-void Project::save_shells() {
-    if (shells.filepath.empty()) {
-        report_status("Error: no shells loaded to save");
-        return;
-    }
-    shells.save();
-    report_status("Saved shells: " + shells.filepath.filename().string());
-}
-
 void Project::open_config(const fs::path& new_config_path) {
     config_path = fs::canonical(new_config_path);
     config = RexConfig::load(config_path);
@@ -217,16 +207,7 @@ void Project::open_config(const fs::path& new_config_path) {
     resolver.scan_and_populate(config.all_string_values());
 
     // reload shells
-    shells = ShellsFile();
-    auto sp = resolved_shells_path();
-    if (!sp.empty() && fs::exists(sp)) {
-        try {
-            shells = ShellsFile::load(sp);
-            report_status("Loaded shells: " + sp.filename().string());
-        } catch (const std::exception& e) {
-            report_status(std::string("Error loading shells: ") + e.what());
-        }
-    }
+    reload_shells();
 
     // reload units
     load_all_units();
@@ -241,7 +222,7 @@ void Project::close_config() {
     resolver = VarResolver();
     plans.clear();
     unit_files.clear();
-    shells = ShellsFile();
+    shell_files.clear();
     report_status("Config closed");
 }
 

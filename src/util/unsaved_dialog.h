@@ -21,9 +21,9 @@
 
 namespace grex {
 
-enum class UnsavedResult { Save, Revert };
+enum class UnsavedResult { Save, Discard, Cancel };
 
-// Shows a blocking modal "Unsaved Changes" dialog with Revert and Save buttons.
+// Shows a blocking modal "Unsaved Changes" dialog with Discard, Cancel, and Save buttons.
 // Returns the user's choice. Uses a nested GLib main loop to block.
 UnsavedResult show_unsaved_dialog(GtkWindow* parent);
 

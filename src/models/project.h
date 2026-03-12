@@ -37,7 +37,7 @@ public:
 
     std::vector<Plan> plans;
     std::vector<UnitFile> unit_files;
-    ShellsFile shells;
+    std::vector<ShellsFile> shell_files;
 
     // status reporting
     using StatusCallback = void(*)(const std::string& msg, void* data);
@@ -55,11 +55,10 @@ public:
     bool is_unit_name_taken(const std::string& name, const Unit* exclude = nullptr) const;
     void load_all_units();
     void load_plan(const std::filesystem::path& plan_path);
-    void load_shells(const std::filesystem::path& shells_path);
     void reload_shells();
+    std::vector<ShellDef> all_shells() const;
     void save_config();
     void save_plans();
-    void save_shells();
 
     void open_config(const std::filesystem::path& new_config_path);
     void close_config();

@@ -44,6 +44,7 @@ private:
     GtkWidget* btn_create_plan_;
     GtkWidget* btn_close_plan_;
     GtkWidget* btn_save_plan_;
+    GtkWidget* task_controls_;   // container for task list + buttons
     UnitEditor* unit_editor_;
 
     int current_task_idx_ = -1;

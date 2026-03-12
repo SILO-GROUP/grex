@@ -36,85 +36,92 @@ UnitsView::UnitsView(Project& project, GrexConfig& grex_config)
     gtk_paned_set_position(GTK_PANED(root_), 300);
 
     // === Left panel: unit files ===
-    auto* left = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    auto* left = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_widget_set_size_request(left, 200, -1);
+    gtk_widget_set_margin_start(left, 8);
+    gtk_widget_set_margin_end(left, 4);
+    gtk_widget_set_margin_top(left, 8);
+    gtk_widget_set_margin_bottom(left, 8);
 
     auto* file_header = gtk_label_new(nullptr);
     gtk_label_set_markup(GTK_LABEL(file_header), "<b>Unit Files</b>");
     gtk_label_set_xalign(GTK_LABEL(file_header), 0.0f);
-    gtk_widget_set_margin_start(file_header, 4);
-    gtk_widget_set_margin_end(file_header, 4);
-    gtk_widget_set_margin_top(file_header, 4);
-    gtk_widget_add_css_class(file_header, "title-3");
     gtk_box_append(GTK_BOX(left), file_header);
 
     auto* file_scroll = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(file_scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand(file_scroll, TRUE);
+    gtk_widget_add_css_class(file_scroll, "frame");
     file_listbox_ = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(file_listbox_), GTK_SELECTION_SINGLE);
     gtk_list_box_set_sort_func(GTK_LIST_BOX(file_listbox_), sort_listbox_alpha, nullptr, nullptr);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(file_scroll), file_listbox_);
     gtk_box_append(GTK_BOX(left), file_scroll);
 
-    auto* file_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_widget_set_margin_start(file_btn_box, 4);
-    gtk_widget_set_margin_end(file_btn_box, 4);
-    gtk_widget_set_margin_bottom(file_btn_box, 4);
-    auto* btn_new_file = gtk_button_new_with_label("New File");
-    auto* btn_del_file = gtk_button_new_with_label("Delete File");
-    gtk_box_append(GTK_BOX(file_btn_box), btn_new_file);
-    gtk_box_append(GTK_BOX(file_btn_box), btn_del_file);
+    // File lifecycle buttons — grouped
+    auto* file_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+
+    auto* file_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(file_edit_group, "linked");
+    auto* btn_new_file = gtk_button_new_with_label("New");
+    auto* btn_del_file = gtk_button_new_with_label("Delete");
+    gtk_box_append(GTK_BOX(file_edit_group), btn_new_file);
+    gtk_box_append(GTK_BOX(file_edit_group), btn_del_file);
+    gtk_box_append(GTK_BOX(file_btn_box), file_edit_group);
+
+    btn_save_ = gtk_button_new_with_label("Save File");
+    gtk_box_append(GTK_BOX(file_btn_box), btn_save_);
+
     gtk_box_append(GTK_BOX(left), file_btn_box);
 
     gtk_paned_set_start_child(GTK_PANED(root_), left);
     gtk_paned_set_shrink_start_child(GTK_PANED(root_), FALSE);
 
     // === Right panel: units in selected file ===
-    auto* right = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    auto* right = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_margin_start(right, 4);
+    gtk_widget_set_margin_end(right, 8);
+    gtk_widget_set_margin_top(right, 8);
+    gtk_widget_set_margin_bottom(right, 8);
 
     file_label_ = gtk_label_new(nullptr);
     gtk_label_set_markup(GTK_LABEL(file_label_), "<b>No file selected</b>");
     gtk_label_set_xalign(GTK_LABEL(file_label_), 0.0f);
-    gtk_widget_set_margin_start(file_label_, 4);
-    gtk_widget_set_margin_end(file_label_, 4);
-    gtk_widget_set_margin_top(file_label_, 4);
-    gtk_widget_add_css_class(file_label_, "title-3");
     gtk_box_append(GTK_BOX(right), file_label_);
 
     auto* unit_scroll = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(unit_scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand(unit_scroll, TRUE);
+    gtk_widget_add_css_class(unit_scroll, "frame");
     unit_listbox_ = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(unit_listbox_), GTK_SELECTION_SINGLE);
     gtk_list_box_set_activate_on_single_click(GTK_LIST_BOX(unit_listbox_), FALSE);
-    // No sort — units appear in file order
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(unit_scroll), unit_listbox_);
     gtk_box_append(GTK_BOX(right), unit_scroll);
 
-    auto* unit_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_widget_set_margin_start(unit_btn_box, 4);
-    gtk_widget_set_margin_end(unit_btn_box, 4);
-    gtk_widget_set_margin_bottom(unit_btn_box, 4);
-    auto* btn_new_unit = gtk_button_new_with_label("New Unit");
-    auto* btn_del_unit = gtk_button_new_with_label("Delete Unit");
-    auto* btn_edit_unit = gtk_button_new_with_label("Edit Unit...");
-    auto* btn_move_up = gtk_button_new_with_label("Move Up");
-    auto* btn_move_down = gtk_button_new_with_label("Move Down");
-    gtk_box_append(GTK_BOX(unit_btn_box), btn_new_unit);
-    gtk_box_append(GTK_BOX(unit_btn_box), btn_del_unit);
-    gtk_box_append(GTK_BOX(unit_btn_box), btn_edit_unit);
-    gtk_box_append(GTK_BOX(unit_btn_box), btn_move_up);
-    gtk_box_append(GTK_BOX(unit_btn_box), btn_move_down);
-    gtk_box_append(GTK_BOX(right), unit_btn_box);
+    // Unit action buttons — grouped by function
+    auto* unit_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
 
-    // Save button
-    btn_save_ = gtk_button_new_with_label("Save Unit File");
-    gtk_widget_set_margin_start(btn_save_, 4);
-    gtk_widget_set_margin_end(btn_save_, 4);
-    gtk_widget_set_margin_bottom(btn_save_, 4);
-    gtk_widget_set_hexpand(btn_save_, TRUE);
-    gtk_box_append(GTK_BOX(right), btn_save_);
+    auto* unit_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(unit_edit_group, "linked");
+    auto* btn_new_unit = gtk_button_new_with_label("New");
+    auto* btn_del_unit = gtk_button_new_with_label("Delete");
+    gtk_box_append(GTK_BOX(unit_edit_group), btn_new_unit);
+    gtk_box_append(GTK_BOX(unit_edit_group), btn_del_unit);
+    gtk_box_append(GTK_BOX(unit_btn_box), unit_edit_group);
+
+    auto* btn_edit_unit = gtk_button_new_with_label("Edit Unit...");
+    gtk_box_append(GTK_BOX(unit_btn_box), btn_edit_unit);
+
+    auto* move_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(move_group, "linked");
+    auto* btn_move_up = gtk_button_new_with_label("Up");
+    auto* btn_move_down = gtk_button_new_with_label("Down");
+    gtk_box_append(GTK_BOX(move_group), btn_move_up);
+    gtk_box_append(GTK_BOX(move_group), btn_move_down);
+    gtk_box_append(GTK_BOX(unit_btn_box), move_group);
+
+    gtk_box_append(GTK_BOX(right), unit_btn_box);
 
     gtk_paned_set_end_child(GTK_PANED(root_), right);
     gtk_paned_set_shrink_end_child(GTK_PANED(root_), FALSE);
@@ -246,6 +253,8 @@ void UnitsView::on_file_selected(GtkListBox*, GtkListBoxRow* row, gpointer data)
 
         auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
         auto result = show_unsaved_dialog(parent);
+        if (result == UnsavedResult::Cancel)
+            return;
         if (result == UnsavedResult::Save) {
             auto& uf = self->project_.unit_files[self->current_file_idx_];
             try { uf.save(); } catch (const std::exception& e) {
@@ -390,11 +399,14 @@ void UnitsView::on_new_unit(GtkButton*, gpointer data) {
     gtk_widget_set_halign(btn_row, GTK_ALIGN_END);
     auto* btn_cancel = gtk_button_new_with_label("Cancel");
     auto* btn_create = gtk_button_new_with_label("Create");
+    gtk_widget_add_css_class(btn_create, "suggested-action");
     gtk_box_append(GTK_BOX(btn_row), btn_cancel);
     gtk_box_append(GTK_BOX(btn_row), btn_create);
     gtk_box_append(GTK_BOX(box), btn_row);
 
     gtk_window_set_child(GTK_WINDOW(win), box);
+    gtk_window_set_default_widget(GTK_WINDOW(win), btn_create);
+    gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
 
     struct NewUnitData {
         UnitsView* view;
@@ -458,99 +470,35 @@ void UnitsView::on_delete_unit(GtkButton*, gpointer data) {
     self->project_.report_status("Deleted unit: " + name);
 }
 
-void UnitsView::cancel_rename() {
-    if (!rename_active_) return;
-    rename_active_ = false;
-
-    // Restore original label
-    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(rename_row_), rename_old_label_);
-    g_object_unref(rename_old_label_);
-    rename_old_label_ = nullptr;
-    rename_row_ = nullptr;
-    rename_unit_idx_ = -1;
-}
-
-void UnitsView::finish_rename(const std::string& new_name) {
-    if (!rename_active_) return;
-    rename_active_ = false;
-
-    auto& uf = project_.unit_files[current_file_idx_];
-    auto* unit = &uf.units[rename_unit_idx_];
-
-    if (!new_name.empty() && new_name != unit->name) {
-        if (project_.is_unit_name_taken(new_name, unit)) {
-            project_.report_status("Error: unit '" + new_name + "' already exists");
-        } else {
-            auto old = unit->name;
-            unit->name = new_name;
-            file_dirty_ = true;
-            gtk_widget_add_css_class(btn_save_, "suggested-action");
-            project_.report_status("Renamed unit: " + old + " -> " + new_name);
-        }
-    }
-
-    // Update label text to current name and restore it
-    auto text = std::string("\u2022 ") + uf.units[rename_unit_idx_].name;
-    gtk_label_set_text(GTK_LABEL(rename_old_label_), text.c_str());
-    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(rename_row_), rename_old_label_);
-    g_object_unref(rename_old_label_);
-    rename_old_label_ = nullptr;
-    rename_row_ = nullptr;
-    rename_unit_idx_ = -1;
-}
-
 void UnitsView::on_unit_activated(GtkListBox*, GtkListBoxRow* row, gpointer data) {
     auto* self = static_cast<UnitsView*>(data);
     if (self->current_file_idx_ < 0 || self->current_file_idx_ >= (int)self->project_.unit_files.size())
         return;
 
-    // Cancel any in-progress rename first
-    self->cancel_rename();
-
     auto& uf = self->project_.unit_files[self->current_file_idx_];
 
     // Get unit name from the row's label (strip bullet prefix)
-    auto* old_label = gtk_list_box_row_get_child(GTK_LIST_BOX_ROW(row));
-    auto label_text = std::string(gtk_label_get_text(GTK_LABEL(old_label)));
+    auto* label = gtk_list_box_row_get_child(GTK_LIST_BOX_ROW(row));
+    auto label_text = std::string(gtk_label_get_text(GTK_LABEL(label)));
     if (label_text.rfind("\u2022 ", 0) == 0)
         label_text = label_text.substr(strlen("\u2022 "));
 
-    // Find the actual index in the units vector by name
-    int idx = -1;
-    for (int i = 0; i < (int)uf.units.size(); i++) {
-        if (uf.units[i].name == label_text) { idx = i; break; }
+    // Find unit by name
+    Unit* unit = nullptr;
+    for (auto& u : uf.units) {
+        if (u.name == label_text) { unit = &u; break; }
     }
-    if (idx < 0) return;
+    if (!unit) return;
 
-    g_object_ref(old_label);
+    auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
+    auto result = show_unit_properties_dialog(parent, unit,
+        self->project_, self->grex_config_, self->project_.all_shells());
 
-    self->rename_active_ = true;
-    self->rename_row_ = row;
-    self->rename_old_label_ = old_label;
-    self->rename_unit_idx_ = idx;
-
-    auto* entry = gtk_entry_new();
-    gtk_editable_set_text(GTK_EDITABLE(entry), uf.units[idx].name.c_str());
-    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), entry);
-
-    // Commit on Enter
-    g_signal_connect(entry, "activate", G_CALLBACK(+[](GtkEntry* e, gpointer d) {
-        auto* self = static_cast<UnitsView*>(d);
-        self->finish_rename(gtk_editable_get_text(GTK_EDITABLE(e)));
-    }), self);
-
-    // Cancel on focus loss — deferred to idle to avoid re-entrancy during selection
-    auto* focus_controller = gtk_event_controller_focus_new();
-    g_signal_connect(focus_controller, "leave", G_CALLBACK(+[](GtkEventControllerFocus*, gpointer d) {
-        g_idle_add(+[](gpointer d) -> gboolean {
-            auto* self = static_cast<UnitsView*>(d);
-            self->cancel_rename();
-            return G_SOURCE_REMOVE;
-        }, d);
-    }), self);
-    gtk_widget_add_controller(entry, focus_controller);
-
-    gtk_widget_grab_focus(entry);
+    if (result == UnitDialogResult::Save) {
+        self->file_dirty_ = true;
+        gtk_widget_add_css_class(self->btn_save_, "suggested-action");
+        self->populate_unit_list();
+    }
 }
 
 void UnitsView::on_move_up(GtkButton*, gpointer data) {
@@ -644,11 +592,12 @@ void UnitsView::on_edit_unit(GtkButton*, gpointer data) {
 
     auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
     auto result = show_unit_properties_dialog(parent, unit,
-        self->project_, self->grex_config_, self->project_.shells.shells);
+        self->project_, self->grex_config_, self->project_.all_shells());
 
     if (result == UnitDialogResult::Save) {
         self->file_dirty_ = true;
         gtk_widget_add_css_class(self->btn_save_, "suggested-action");
+        self->populate_unit_list();
     }
 }
 

@@ -49,6 +49,7 @@ struct DialogState {
     GCancellable* cancellable = nullptr;
 
     // widgets
+    GtkWidget* entry_name = nullptr;
     GtkWidget* entry_target = nullptr;
     GtkWidget* box_target = nullptr;
     GtkWidget* switch_shell_cmd = nullptr;
@@ -59,6 +60,7 @@ struct DialogState {
     GtkWidget* box_workdir = nullptr;
     GtkWidget* switch_rectify = nullptr;
     GtkWidget* entry_rectifier = nullptr;
+    GtkWidget* box_rectifier = nullptr;
     GtkWidget* switch_active = nullptr;
     GtkWidget* switch_required = nullptr;
     GtkWidget* switch_set_user_ctx = nullptr;
@@ -92,13 +94,15 @@ struct DialogState {
 
 static void update_sensitivity(DialogState* s);
 
-static void dlg_switch_toggled_cb(GObject* sw, GParamSpec*, gpointer data) {
+static gboolean dlg_switch_state_set_cb(GtkSwitch* sw, gboolean new_state, gpointer data) {
     auto* b = static_cast<DlgSwitchBinding*>(data);
+    gtk_switch_set_state(sw, new_state);
     if (b->state) {
-        *b->target = gtk_switch_get_active(GTK_SWITCH(sw));
+        *b->target = new_state;
         if (!b->state->loading)
             update_sensitivity(b->state);
     }
+    return TRUE;
 }
 
 static int shell_index(const std::vector<ShellDef>& shells, const std::string& name) {
@@ -110,6 +114,7 @@ static int shell_index(const std::vector<ShellDef>& shells, const std::string& n
 static GtkWidget* make_switch_row(GtkWidget* grid, int row, const char* label_text, GtkWidget** label_out) {
     auto* label = gtk_label_new(label_text);
     gtk_label_set_xalign(GTK_LABEL(label), 1.0f);
+    gtk_widget_add_css_class(label, "dim-label");
     gtk_grid_attach(GTK_GRID(grid), label, 0, row, 1, 1);
     if (label_out) *label_out = label;
     auto* sw = gtk_switch_new();
@@ -121,6 +126,7 @@ static GtkWidget* make_switch_row(GtkWidget* grid, int row, const char* label_te
 static GtkWidget* make_entry_row(GtkWidget* grid, int row, const char* label_text, GtkWidget** label_out) {
     auto* label = gtk_label_new(label_text);
     gtk_label_set_xalign(GTK_LABEL(label), 1.0f);
+    gtk_widget_add_css_class(label, "dim-label");
     gtk_grid_attach(GTK_GRID(grid), label, 0, row, 1, 1);
     if (label_out) *label_out = label;
     auto* entry = gtk_entry_new();
@@ -133,6 +139,7 @@ static GtkWidget* make_browse_row(DialogState* s, GtkWidget* grid, int row, cons
                                    GtkWidget** label_out, GtkWidget** box_out) {
     auto* label = gtk_label_new(label_text);
     gtk_label_set_xalign(GTK_LABEL(label), 1.0f);
+    gtk_widget_add_css_class(label, "dim-label");
     gtk_grid_attach(GTK_GRID(grid), label, 0, row, 1, 1);
     if (label_out) *label_out = label;
 
@@ -143,7 +150,7 @@ static GtkWidget* make_browse_row(DialogState* s, GtkWidget* grid, int row, cons
     gtk_widget_set_hexpand(entry, TRUE);
     gtk_box_append(GTK_BOX(hbox), entry);
 
-    auto* btn = gtk_button_new_with_label("Select");
+    auto* btn = gtk_button_new_with_label("Select...");
     gtk_box_append(GTK_BOX(hbox), btn);
 
     struct BrowseBtnData {
@@ -195,6 +202,7 @@ static GtkWidget* make_file_row(DialogState* s, GtkWidget* grid, int row, const 
                                  GtkWidget** label_out, GtkWidget** box_out) {
     auto* label = gtk_label_new(label_text);
     gtk_label_set_xalign(GTK_LABEL(label), 1.0f);
+    gtk_widget_add_css_class(label, "dim-label");
     gtk_grid_attach(GTK_GRID(grid), label, 0, row, 1, 1);
     if (label_out) *label_out = label;
 
@@ -205,12 +213,15 @@ static GtkWidget* make_file_row(DialogState* s, GtkWidget* grid, int row, const 
     gtk_widget_set_hexpand(entry, TRUE);
     gtk_box_append(GTK_BOX(hbox), entry);
 
+    auto* file_btn_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(file_btn_group, "linked");
     auto* btn_browse = gtk_button_new_with_label("Select");
     auto* btn_open = gtk_button_new_with_label("Open");
     auto* btn_new = gtk_button_new_with_label("Create");
-    gtk_box_append(GTK_BOX(hbox), btn_browse);
-    gtk_box_append(GTK_BOX(hbox), btn_open);
-    gtk_box_append(GTK_BOX(hbox), btn_new);
+    gtk_box_append(GTK_BOX(file_btn_group), btn_browse);
+    gtk_box_append(GTK_BOX(file_btn_group), btn_open);
+    gtk_box_append(GTK_BOX(file_btn_group), btn_new);
+    gtk_box_append(GTK_BOX(hbox), file_btn_group);
 
     struct FileBtnData {
         DialogState* state;
@@ -345,7 +356,7 @@ static void update_sensitivity(DialogState* s) {
 
     show(active && s->working_copy.is_shell_command, {s->label_shell_def, s->dropdown_shell_def, s->label_force_pty, s->switch_force_pty});
     show(active && s->working_copy.set_working_directory, {s->label_workdir, s->box_workdir});
-    show(active && s->working_copy.rectify, {s->label_rectifier, s->entry_rectifier});
+    show(active && s->working_copy.rectify, {s->label_rectifier, s->box_rectifier});
     show(active && s->working_copy.set_user_context, {s->label_user, s->entry_user, s->label_group, s->entry_group});
     show(active && s->working_copy.supply_environment, {s->label_environment, s->box_environment});
 }
@@ -361,6 +372,7 @@ static void populate_and_connect(DialogState* s) {
     g_object_unref(string_list);
 
     s->loading = true;
+    gtk_editable_set_text(GTK_EDITABLE(s->entry_name), u.name.c_str());
     gtk_editable_set_text(GTK_EDITABLE(s->entry_target), u.target.c_str());
     gtk_switch_set_active(GTK_SWITCH(s->switch_shell_cmd), u.is_shell_command);
     gtk_drop_down_set_selected(GTK_DROP_DOWN(s->dropdown_shell_def), shell_index(*s->shells, u.shell_definition));
@@ -388,6 +400,7 @@ static void populate_and_connect(DialogState* s) {
             *eb->target = gtk_editable_get_text(e);
         }), eb);
     };
+    bind_entry(s->entry_name, &u.name);
     bind_entry(s->entry_target, &u.target);
     bind_entry(s->entry_workdir, &u.working_directory);
     bind_entry(s->entry_rectifier, &u.rectifier);
@@ -399,7 +412,7 @@ static void populate_and_connect(DialogState* s) {
     auto bind_switch = [s](GtkWidget* sw, bool* target) {
         auto* sb = new DlgSwitchBinding{s, target};
         s->switch_bindings.push_back(sb);
-        g_signal_connect(sw, "notify::active", G_CALLBACK(dlg_switch_toggled_cb), sb);
+        g_signal_connect(sw, "state-set", G_CALLBACK(dlg_switch_state_set_cb), sb);
     };
     bind_switch(s->switch_shell_cmd, &u.is_shell_command);
     bind_switch(s->switch_force_pty, &u.force_pty);
@@ -428,29 +441,24 @@ UnitDialogResult show_unit_properties_dialog(GtkWindow* parent,
     gtk_window_set_title(GTK_WINDOW(win), ("Unit Properties: " + unit->name).c_str());
     gtk_window_set_transient_for(GTK_WINDOW(win), parent);
     gtk_window_set_modal(GTK_WINDOW(win), TRUE);
-    gtk_window_set_default_size(GTK_WINDOW(win), 600, 550);
+    gtk_window_set_default_size(GTK_WINDOW(win), 650, 620);
 
     auto* outer_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_widget_set_margin_start(outer_box, 16);
-    gtk_widget_set_margin_end(outer_box, 16);
+    gtk_widget_set_margin_start(outer_box, 20);
+    gtk_widget_set_margin_end(outer_box, 20);
     gtk_widget_set_margin_top(outer_box, 16);
     gtk_widget_set_margin_bottom(outer_box, 16);
-
-    // Unit name header
-    auto* name_header = gtk_label_new(nullptr);
-    auto header_markup = std::string("<big><b>") + unit->name + "</b></big>";
-    gtk_label_set_markup(GTK_LABEL(name_header), header_markup.c_str());
-    gtk_widget_set_halign(name_header, GTK_ALIGN_CENTER);
-    gtk_box_append(GTK_BOX(outer_box), name_header);
 
     // Scrolled content area
     auto* scroll = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand(scroll, TRUE);
 
-    auto* grid = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 6);
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
+    auto* content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_widget_set_margin_start(content, 4);
+    gtk_widget_set_margin_end(content, 4);
+    gtk_widget_set_margin_top(content, 8);
+    gtk_widget_set_margin_bottom(content, 8);
 
     auto* loop = g_main_loop_new(nullptr, FALSE);
     auto* cancellable = g_cancellable_new();
@@ -464,38 +472,93 @@ UnitDialogResult show_unit_properties_dialog(GtkWindow* parent,
     state.shells = &shells;
     state.cancellable = cancellable;
 
-    int r = 0;
-    state.entry_target = make_file_row(&state, grid, r++, "Target", &state.label_target, &state.box_target);
-    state.switch_shell_cmd = make_switch_row(grid, r++, "Shell Command", &state.label_shell_cmd);
+    // Helper to create a framed section with a bold title label
+    auto make_section = [&](const char* title) {
+        auto* frame = gtk_frame_new(nullptr);
+        auto* frame_label = gtk_label_new(nullptr);
+        gtk_label_set_markup(GTK_LABEL(frame_label), (std::string(" <b>") + title + "</b> ").c_str());
+        gtk_frame_set_label_widget(GTK_FRAME(frame), frame_label);
+        gtk_box_append(GTK_BOX(content), frame);
+        return frame;
+    };
 
-    // Shell definition dropdown
+    // Helper to create a grid inside a frame with internal padding
+    auto make_grid = [&](GtkWidget* frame) {
+        auto* grid = gtk_grid_new();
+        gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+        gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
+        gtk_widget_set_margin_start(grid, 12);
+        gtk_widget_set_margin_end(grid, 12);
+        gtk_widget_set_margin_top(grid, 8);
+        gtk_widget_set_margin_bottom(grid, 12);
+        gtk_frame_set_child(GTK_FRAME(frame), grid);
+        return grid;
+    };
+
+    // === Identity ===
+    auto* id_frame = make_section("Identity");
+    auto* id_grid = make_grid(id_frame);
+    state.entry_name = make_entry_row(id_grid, 0, "Name", nullptr);
+
+    // === Status ===
+    auto* status_frame = make_section("Status");
+    auto* status_grid = make_grid(status_frame);
+    state.switch_active = make_switch_row(status_grid, 0, "Active", &state.label_active);
+    state.switch_required = make_switch_row(status_grid, 1, "Required", &state.label_required);
+
+    // === Execution ===
+    auto* exec_frame = make_section("Execution");
+    auto* exec_grid = make_grid(exec_frame);
+    int r = 0;
+    state.entry_target = make_file_row(&state, exec_grid, r++, "Target", &state.label_target, &state.box_target);
+    state.switch_shell_cmd = make_switch_row(exec_grid, r++, "Shell Command", &state.label_shell_cmd);
+
     state.label_shell_def = gtk_label_new("Shell Definition");
     gtk_label_set_xalign(GTK_LABEL(state.label_shell_def), 1.0f);
-    gtk_grid_attach(GTK_GRID(grid), state.label_shell_def, 0, r, 1, 1);
+    gtk_widget_add_css_class(state.label_shell_def, "dim-label");
+    gtk_grid_attach(GTK_GRID(exec_grid), state.label_shell_def, 0, r, 1, 1);
     auto* string_list = gtk_string_list_new(nullptr);
     state.dropdown_shell_def = gtk_drop_down_new(G_LIST_MODEL(string_list), nullptr);
     gtk_widget_set_hexpand(state.dropdown_shell_def, TRUE);
-    gtk_grid_attach(GTK_GRID(grid), state.dropdown_shell_def, 1, r++, 1, 1);
+    gtk_grid_attach(GTK_GRID(exec_grid), state.dropdown_shell_def, 1, r++, 1, 1);
 
-    state.switch_force_pty = make_switch_row(grid, r++, "Force PTY", &state.label_force_pty);
-    state.switch_set_workdir = make_switch_row(grid, r++, "Set Working Dir", &state.label_set_workdir);
-    state.entry_workdir = make_browse_row(&state, grid, r++, "Working Directory", &state.label_workdir, &state.box_workdir);
-    state.switch_rectify = make_switch_row(grid, r++, "Rectify", &state.label_rectify);
-    state.entry_rectifier = make_entry_row(grid, r++, "Rectifier", &state.label_rectifier);
-    state.switch_active = make_switch_row(grid, r++, "Active", &state.label_active);
-    state.switch_required = make_switch_row(grid, r++, "Required", &state.label_required);
-    state.switch_set_user_ctx = make_switch_row(grid, r++, "Set User Context", &state.label_set_user_ctx);
-    state.entry_user = make_entry_row(grid, r++, "User", &state.label_user);
-    state.entry_group = make_entry_row(grid, r++, "Group", &state.label_group);
-    state.switch_supply_env = make_switch_row(grid, r++, "Supply Environment", &state.label_supply_env);
-    state.entry_environment = make_file_row(&state, grid, r++, "Environment", &state.label_environment, &state.box_environment);
+    state.switch_force_pty = make_switch_row(exec_grid, r++, "Force PTY", &state.label_force_pty);
 
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), grid);
+    // === Working Directory ===
+    auto* wd_frame = make_section("Working Directory");
+    auto* wd_grid = make_grid(wd_frame);
+    state.switch_set_workdir = make_switch_row(wd_grid, 0, "Set Working Dir", &state.label_set_workdir);
+    state.entry_workdir = make_browse_row(&state, wd_grid, 1, "Working Directory", &state.label_workdir, &state.box_workdir);
+
+    // === Validation ===
+    auto* val_frame = make_section("Validation");
+    auto* val_grid = make_grid(val_frame);
+    state.switch_rectify = make_switch_row(val_grid, 0, "Rectify", &state.label_rectify);
+    state.entry_rectifier = make_file_row(&state, val_grid, 1, "Rectifier", &state.label_rectifier, &state.box_rectifier);
+
+    // === Security ===
+    auto* sec_frame = make_section("Security");
+    auto* sec_grid = make_grid(sec_frame);
+    state.switch_set_user_ctx = make_switch_row(sec_grid, 0, "Set User Context", &state.label_set_user_ctx);
+    state.entry_user = make_entry_row(sec_grid, 1, "User", &state.label_user);
+    state.entry_group = make_entry_row(sec_grid, 2, "Group", &state.label_group);
+
+    // === Environment ===
+    auto* env_frame = make_section("Environment");
+    auto* env_grid = make_grid(env_frame);
+    state.switch_supply_env = make_switch_row(env_grid, 0, "Supply Environment", &state.label_supply_env);
+    state.entry_environment = make_file_row(&state, env_grid, 1, "Environment", &state.label_environment, &state.box_environment);
+
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), content);
     gtk_box_append(GTK_BOX(outer_box), scroll);
 
     // Button row
-    auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    auto* btn_sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_widget_set_margin_top(btn_sep, 4);
+    gtk_box_append(GTK_BOX(outer_box), btn_sep);
+    auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_halign(btn_row, GTK_ALIGN_END);
+    gtk_widget_set_margin_top(btn_row, 4);
     auto* btn_cancel = gtk_button_new_with_label("Cancel");
     auto* btn_save = gtk_button_new_with_label("Save");
     gtk_widget_add_css_class(btn_save, "suggested-action");
@@ -518,6 +581,15 @@ UnitDialogResult show_unit_properties_dialog(GtkWindow* parent,
 
     g_signal_connect(btn_save, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
         auto* s = static_cast<DialogState*>(d);
+        if (s->working_copy.name.empty()) {
+            s->project->report_status("Error: unit name cannot be empty");
+            return;
+        }
+        if (s->working_copy.name != s->original->name &&
+            s->project->is_unit_name_taken(s->working_copy.name, s->original)) {
+            s->project->report_status("Error: unit '" + s->working_copy.name + "' already exists");
+            return;
+        }
         *s->original = s->working_copy;
         s->result = UnitDialogResult::Save;
         gtk_window_close(GTK_WINDOW(s->window));

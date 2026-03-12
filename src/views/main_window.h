@@ -19,6 +19,7 @@
 #pragma once
 #include <gtk/gtk.h>
 #include <string>
+#include <vector>
 #include "models/project.h"
 #include "models/grex_config.h"
 
@@ -45,15 +46,23 @@ private:
     ShellsView* shells_view_;
 
     GtkWidget* stack_;
-    GtkWidget* switcher_;
     GtkWidget* status_label_;
-    GtkWidget* prev_page_ = nullptr;
+
+    struct TabInfo {
+        const char* name;
+        GtkWidget* page;
+        GtkWidget* button;
+    };
+    std::vector<TabInfo> tabs_;
+    int current_tab_ = 0;
 
     void update_tab_sensitivity();
     void refresh_visible_page();
+    bool check_dirty_and_resolve();
+    void switch_to_tab(int idx);
+    void update_tab_buttons();
 
     static void on_config_applied(void* data);
-    static void on_stack_page_changed(GObject* stack, GParamSpec* pspec, gpointer data);
     static void on_project_status(const std::string& msg, void* data);
     static void on_grex_config_clicked(GtkButton* btn, gpointer data);
 };

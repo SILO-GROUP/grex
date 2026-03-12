@@ -25,60 +25,95 @@
 
 namespace grex {
 
+struct TabClickData {
+    MainWindow* self;
+    int index;
+};
+
 MainWindow::MainWindow(GtkApplication* app, Project& project, GrexConfig& grex_config)
     : project_(project), grex_config_(grex_config) {
     window_ = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(window_), "grex");
+    gtk_window_set_title(GTK_WINDOW(window_), "GREX: Rex Config");
     gtk_window_set_default_size(GTK_WINDOW(window_), 1200, 800);
 
     auto* vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
     // Header bar
     auto* header = gtk_header_bar_new();
-    gtk_window_set_title(GTK_WINDOW(window_), "GREX: Rex Config");
     gtk_window_set_titlebar(GTK_WINDOW(window_), header);
 
-    // Grex Config button in header bar (opens modal dialog)
+    // Grex Config button in header bar
     auto* grex_btn = gtk_button_new_with_label("Grex Config");
     gtk_widget_remove_css_class(grex_btn, "flat");
     gtk_header_bar_pack_end(GTK_HEADER_BAR(header), grex_btn);
     g_signal_connect(grex_btn, "clicked", G_CALLBACK(on_grex_config_clicked), this);
 
-    // Stack + switcher
+    // Stack (no GtkStackSwitcher — we use our own buttons)
     stack_ = gtk_stack_new();
-    auto* stack = stack_;
-    gtk_stack_set_transition_type(GTK_STACK(stack), GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
-
-    switcher_ = gtk_stack_switcher_new();
-    gtk_stack_switcher_set_stack(GTK_STACK_SWITCHER(switcher_), GTK_STACK(stack));
-    gtk_widget_set_halign(switcher_, GTK_ALIGN_CENTER);
-    gtk_box_append(GTK_BOX(vbox), switcher_);
+    gtk_stack_set_transition_type(GTK_STACK(stack_), GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
 
     // Wire project status reporting to status bar
     project_.status_cb = on_project_status;
     project_.status_cb_data = this;
 
-    // Rex Config view
+    // Create views
     config_view_ = new ConfigView(project_);
     config_view_->set_apply_callback(on_config_applied, this);
-    gtk_stack_add_titled(GTK_STACK(stack), config_view_->widget(), "config", "Rex Config");
+    gtk_stack_add_named(GTK_STACK(stack_), config_view_->widget(), "config");
 
-    // Plan view
     plan_view_ = new PlanView(project_, grex_config_);
-    gtk_stack_add_titled(GTK_STACK(stack), plan_view_->widget(), "plans", "Plans");
+    gtk_stack_add_named(GTK_STACK(stack_), plan_view_->widget(), "plans");
 
-    // Units view
     units_view_ = new UnitsView(project_, grex_config_);
-    gtk_stack_add_titled(GTK_STACK(stack), units_view_->widget(), "units", "Units");
+    gtk_stack_add_named(GTK_STACK(stack_), units_view_->widget(), "units");
 
-    // Shells view
     shells_view_ = new ShellsView(project_);
-    gtk_stack_add_titled(GTK_STACK(stack), shells_view_->widget(), "shells", "Shells");
+    gtk_stack_add_named(GTK_STACK(stack_), shells_view_->widget(), "shells");
 
-    gtk_widget_set_vexpand(stack, TRUE);
-    gtk_box_append(GTK_BOX(vbox), stack);
+    // Tab bar — plain buttons, we control switching
+    auto* tab_bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_halign(tab_bar, GTK_ALIGN_CENTER);
+    gtk_widget_add_css_class(tab_bar, "linked");
 
-    g_signal_connect(stack, "notify::visible-child", G_CALLBACK(on_stack_page_changed), this);
+    const char* tab_labels[] = {"Rex Config", "Units", "Plans", "Shells"};
+    GtkWidget* tab_pages[] = {
+        config_view_->widget(), units_view_->widget(),
+        plan_view_->widget(), shells_view_->widget()
+    };
+
+    for (int i = 0; i < 4; i++) {
+        auto* btn = gtk_toggle_button_new_with_label(tab_labels[i]);
+        gtk_box_append(GTK_BOX(tab_bar), btn);
+        tabs_.push_back({tab_labels[i], tab_pages[i], btn});
+
+        auto* data = new TabClickData{this, i};
+        g_signal_connect(btn, "clicked", G_CALLBACK(+[](GtkToggleButton* btn, gpointer d) {
+            auto* td = static_cast<TabClickData*>(d);
+            auto* self = td->self;
+            int idx = td->index;
+
+            // If clicking the already-active tab, keep it toggled and do nothing
+            if (idx == self->current_tab_) {
+                gtk_toggle_button_set_active(btn, TRUE);
+                return;
+            }
+
+            // Check dirty state before allowing switch
+            if (!self->check_dirty_and_resolve()) {
+                // Cancelled — re-toggle current tab button, untoggle this one
+                self->update_tab_buttons();
+                return;
+            }
+
+            self->switch_to_tab(idx);
+        }), data);
+    }
+
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(tabs_[0].button), TRUE);
+
+    gtk_box_append(GTK_BOX(vbox), tab_bar);
+    gtk_widget_set_vexpand(stack_, TRUE);
+    gtk_box_append(GTK_BOX(vbox), stack_);
 
     // Status bar
     gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
@@ -94,10 +129,7 @@ MainWindow::MainWindow(GtkApplication* app, Project& project, GrexConfig& grex_c
     gtk_box_append(GTK_BOX(status_bar), status_label_);
     gtk_box_append(GTK_BOX(vbox), status_bar);
 
-    prev_page_ = config_view_->widget();
-
     gtk_window_set_child(GTK_WINDOW(window_), vbox);
-
     update_tab_sensitivity();
 }
 
@@ -112,6 +144,54 @@ void MainWindow::set_status(const std::string& msg) {
     gtk_label_set_text(GTK_LABEL(status_label_), msg.c_str());
 }
 
+void MainWindow::update_tab_buttons() {
+    for (int i = 0; i < (int)tabs_.size(); i++)
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(tabs_[i].button), i == current_tab_);
+}
+
+bool MainWindow::check_dirty_and_resolve() {
+    auto* cur = tabs_[current_tab_].page;
+
+    bool dirty = false;
+    if (cur == config_view_->widget() && config_view_->is_dirty())
+        dirty = true;
+    else if (cur == plan_view_->widget() && plan_view_->is_dirty())
+        dirty = true;
+    else if (cur == units_view_->widget() && units_view_->is_dirty())
+        dirty = true;
+
+    if (!dirty)
+        return true;
+
+    auto result = show_unsaved_dialog(GTK_WINDOW(window_));
+    if (result == UnsavedResult::Cancel)
+        return false;
+
+    if (result == UnsavedResult::Save) {
+        if (cur == config_view_->widget())
+            config_view_->apply_config();
+        else if (cur == plan_view_->widget())
+            plan_view_->save_dirty();
+        else if (cur == units_view_->widget())
+            units_view_->save_current_file();
+    } else {
+        if (cur == config_view_->widget())
+            config_view_->refresh();
+        else if (cur == plan_view_->widget())
+            plan_view_->revert_dirty();
+        else if (cur == units_view_->widget())
+            units_view_->refresh();
+    }
+    return true;
+}
+
+void MainWindow::switch_to_tab(int idx) {
+    current_tab_ = idx;
+    gtk_stack_set_visible_child(GTK_STACK(stack_), tabs_[idx].page);
+    update_tab_buttons();
+    refresh_visible_page();
+}
+
 void MainWindow::on_config_applied(void* data) {
     auto* self = static_cast<MainWindow*>(data);
     self->update_tab_sensitivity();
@@ -123,82 +203,25 @@ void MainWindow::on_config_applied(void* data) {
 void MainWindow::update_tab_sensitivity() {
     bool has_config = !project_.config_path.empty();
 
-    // Enable/disable the page content
     gtk_widget_set_sensitive(plan_view_->widget(), has_config);
     gtk_widget_set_sensitive(units_view_->widget(), has_config);
     gtk_widget_set_sensitive(shells_view_->widget(), has_config);
 
-    // Grey out the switcher buttons for disabled tabs
-    // GtkStackSwitcher children are toggle buttons in page order
-    auto* child = gtk_widget_get_first_child(switcher_);
-    int i = 0;
-    while (child) {
-        // child 0 = Rex Config (always enabled), 1-3 = Plans/Units/Shells
-        if (i > 0)
-            gtk_widget_set_sensitive(child, has_config);
-        child = gtk_widget_get_next_sibling(child);
-        i++;
-    }
+    // Disable tab buttons for non-config tabs when no config loaded
+    for (int i = 1; i < (int)tabs_.size(); i++)
+        gtk_widget_set_sensitive(tabs_[i].button, has_config);
 
     // If config was just closed and we're on a non-config tab, switch to config
-    if (!has_config) {
-        auto* visible = gtk_stack_get_visible_child(GTK_STACK(stack_));
-        if (visible != config_view_->widget())
-            gtk_stack_set_visible_child(GTK_STACK(stack_), config_view_->widget());
-    }
-}
-
-void MainWindow::on_stack_page_changed(GObject* stack, GParamSpec*, gpointer data) {
-    auto* self = static_cast<MainWindow*>(data);
-    auto* visible = gtk_stack_get_visible_child(GTK_STACK(stack));
-
-    // Check if previous page has unsaved changes
-    auto* prev = self->prev_page_;
-    self->prev_page_ = visible;
-
-    bool prev_dirty = false;
-    if (prev == self->config_view_->widget() && self->config_view_->is_dirty())
-        prev_dirty = true;
-    else if (prev == self->plan_view_->widget() && self->plan_view_->is_dirty())
-        prev_dirty = true;
-    else if (prev == self->units_view_->widget() && self->units_view_->is_dirty())
-        prev_dirty = true;
-
-    if (prev_dirty) {
-        auto result = show_unsaved_dialog(GTK_WINDOW(self->window_));
-        if (result == UnsavedResult::Save) {
-            if (self->config_view_->is_dirty())
-                self->config_view_->apply_config();
-            if (self->plan_view_->is_dirty())
-                self->plan_view_->save_dirty();
-            if (self->units_view_->is_dirty())
-                self->units_view_->save_current_file();
-        } else {
-            if (self->config_view_->is_dirty())
-                self->config_view_->refresh();
-            if (self->plan_view_->is_dirty())
-                self->plan_view_->revert_dirty();
-            if (self->units_view_->is_dirty())
-                self->units_view_->refresh();
-        }
-    }
-
-    // No dirty state — refresh immediately
-    self->refresh_visible_page();
+    if (!has_config && current_tab_ != 0)
+        switch_to_tab(0);
 }
 
 void MainWindow::refresh_visible_page() {
-    auto* visible = gtk_stack_get_visible_child(GTK_STACK(stack_));
+    auto* visible = tabs_[current_tab_].page;
 
-    // Update window title for current tab
-    if (visible == config_view_->widget())
-        gtk_window_set_title(GTK_WINDOW(window_), "GREX: Rex Config");
-    else if (visible == plan_view_->widget())
-        gtk_window_set_title(GTK_WINDOW(window_), "GREX: Plans");
-    else if (visible == units_view_->widget())
-        gtk_window_set_title(GTK_WINDOW(window_), "GREX: Units");
-    else if (visible == shells_view_->widget())
-        gtk_window_set_title(GTK_WINDOW(window_), "GREX: Shells");
+    // Update window title
+    auto title = std::string("GREX: ") + tabs_[current_tab_].name;
+    gtk_window_set_title(GTK_WINDOW(window_), title.c_str());
 
     // Refresh the newly visible page
     if (visible == plan_view_->widget()) {
@@ -239,14 +262,28 @@ void MainWindow::on_grex_config_clicked(GtkButton*, gpointer data) {
     gtk_window_set_modal(GTK_WINDOW(win), TRUE);
     gtk_window_set_default_size(GTK_WINDOW(win), 400, -1);
 
-    auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-    gtk_widget_set_margin_start(box, 16);
-    gtk_widget_set_margin_end(box, 16);
-    gtk_widget_set_margin_top(box, 16);
-    gtk_widget_set_margin_bottom(box, 16);
+    auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
+    gtk_widget_set_margin_start(box, 24);
+    gtk_widget_set_margin_end(box, 24);
+    gtk_widget_set_margin_top(box, 20);
+    gtk_widget_set_margin_bottom(box, 20);
 
+    // Header
+    auto* header = gtk_label_new(nullptr);
+    gtk_label_set_markup(GTK_LABEL(header), "<big><b>GREX Preferences</b></big>");
+    gtk_widget_set_halign(header, GTK_ALIGN_CENTER);
+    gtk_box_append(GTK_BOX(box), header);
+
+    auto* desc = gtk_label_new("Application settings stored in ~/.config/grex/grex.ini");
+    gtk_label_set_xalign(GTK_LABEL(desc), 0.5f);
+    gtk_widget_add_css_class(desc, "dim-label");
+    gtk_box_append(GTK_BOX(box), desc);
+
+    gtk_box_append(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+    // Settings grid
     auto* grid = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
 
     auto* label = gtk_label_new("File Editor");
@@ -255,20 +292,33 @@ void MainWindow::on_grex_config_clicked(GtkButton*, gpointer data) {
 
     auto* entry = gtk_entry_new();
     gtk_widget_set_hexpand(entry, TRUE);
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "e.g. xdg-open, vim, code");
     gtk_editable_set_text(GTK_EDITABLE(entry), self->grex_config_.file_editor.c_str());
     gtk_grid_attach(GTK_GRID(grid), entry, 1, 0, 1, 1);
 
+    auto* hint = gtk_label_new("Command used to open files from unit target/environment fields.");
+    gtk_label_set_xalign(GTK_LABEL(hint), 0.0f);
+    gtk_label_set_wrap(GTK_LABEL(hint), TRUE);
+    gtk_widget_add_css_class(hint, "dim-label");
+    gtk_grid_attach(GTK_GRID(grid), hint, 1, 1, 1, 1);
+
     gtk_box_append(GTK_BOX(box), grid);
 
-    auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    gtk_box_append(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+    // Buttons
+    auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_widget_set_halign(btn_row, GTK_ALIGN_END);
     auto* btn_cancel = gtk_button_new_with_label("Cancel");
     auto* btn_save = gtk_button_new_with_label("Save");
+    gtk_widget_add_css_class(btn_save, "suggested-action");
     gtk_box_append(GTK_BOX(btn_row), btn_cancel);
     gtk_box_append(GTK_BOX(btn_row), btn_save);
     gtk_box_append(GTK_BOX(box), btn_row);
 
     gtk_window_set_child(GTK_WINDOW(win), box);
+    gtk_window_set_default_widget(GTK_WINDOW(win), btn_save);
+    gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
 
     auto* dd = new GCDialogData{self, win, entry};
 

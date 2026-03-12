@@ -31,27 +31,26 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     gtk_paned_set_position(GTK_PANED(root_), 300);
 
     // === Left panel ===
-    auto* left = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    auto* left = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_widget_set_size_request(left, 200, -1);
+    gtk_widget_set_margin_start(left, 8);
+    gtk_widget_set_margin_end(left, 4);
+    gtk_widget_set_margin_top(left, 8);
+    gtk_widget_set_margin_bottom(left, 8);
 
     // Plan label
     plan_label_ = gtk_label_new(nullptr);
     gtk_label_set_markup(GTK_LABEL(plan_label_), "<b>Plan:</b> No plan loaded");
     gtk_label_set_xalign(GTK_LABEL(plan_label_), 0.0f);
-    gtk_widget_set_margin_start(plan_label_, 4);
-    gtk_widget_set_margin_end(plan_label_, 4);
-    gtk_widget_set_margin_top(plan_label_, 4);
-    gtk_widget_add_css_class(plan_label_, "title-3");
     gtk_box_append(GTK_BOX(left), plan_label_);
 
     // Plan management buttons (Open/Create shown when no plan, Close shown when plan loaded)
-    auto* mgmt_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_widget_set_margin_start(mgmt_row, 4);
-    gtk_widget_set_margin_end(mgmt_row, 4);
+    auto* mgmt_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(mgmt_row, "linked");
 
-    btn_open_plan_ = gtk_button_new_with_label("Open Plan");
-    btn_create_plan_ = gtk_button_new_with_label("Create Plan");
-    btn_close_plan_ = gtk_button_new_with_label("Close Plan");
+    btn_open_plan_ = gtk_button_new_with_label("Open");
+    btn_create_plan_ = gtk_button_new_with_label("Create");
+    btn_close_plan_ = gtk_button_new_with_label("Close");
     gtk_widget_set_hexpand(btn_open_plan_, TRUE);
     gtk_widget_set_hexpand(btn_create_plan_, TRUE);
     gtk_widget_set_hexpand(btn_close_plan_, TRUE);
@@ -60,38 +59,44 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     gtk_box_append(GTK_BOX(mgmt_row), btn_close_plan_);
     gtk_box_append(GTK_BOX(left), mgmt_row);
 
+    // Task controls — greyed out when no plan loaded
+    task_controls_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_vexpand(task_controls_, TRUE);
+
     // Task list
     auto* scroll = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand(scroll, TRUE);
+    gtk_widget_add_css_class(scroll, "frame");
     task_listbox_ = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(task_listbox_), GTK_SELECTION_SINGLE);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), task_listbox_);
-    gtk_box_append(GTK_BOX(left), scroll);
+    gtk_box_append(GTK_BOX(task_controls_), scroll);
 
-    // Buttons
-    auto* btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_widget_set_margin_start(btn_box, 4);
-    gtk_widget_set_margin_end(btn_box, 4);
-    gtk_widget_set_margin_bottom(btn_box, 4);
+    // Task action buttons — grouped by function
+    auto* btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
 
-    auto* btn_add = gtk_button_new_with_label("Add Task");
-    auto* btn_del = gtk_button_new_with_label("Delete Task");
+    auto* task_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(task_edit_group, "linked");
+    auto* btn_add = gtk_button_new_with_label("Add");
+    auto* btn_del = gtk_button_new_with_label("Delete");
+    gtk_box_append(GTK_BOX(task_edit_group), btn_add);
+    gtk_box_append(GTK_BOX(task_edit_group), btn_del);
+    gtk_box_append(GTK_BOX(btn_box), task_edit_group);
+
+    auto* move_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(move_group, "linked");
     auto* btn_up = gtk_button_new_with_label("Up");
     auto* btn_down = gtk_button_new_with_label("Down");
-    gtk_box_append(GTK_BOX(btn_box), btn_add);
-    gtk_box_append(GTK_BOX(btn_box), btn_del);
-    gtk_box_append(GTK_BOX(btn_box), btn_up);
-    gtk_box_append(GTK_BOX(btn_box), btn_down);
-    gtk_box_append(GTK_BOX(left), btn_box);
+    gtk_box_append(GTK_BOX(move_group), btn_up);
+    gtk_box_append(GTK_BOX(move_group), btn_down);
+    gtk_box_append(GTK_BOX(btn_box), move_group);
 
-    // Save Plan button
     btn_save_plan_ = gtk_button_new_with_label("Save Plan");
-    gtk_widget_set_margin_start(btn_save_plan_, 4);
-    gtk_widget_set_margin_end(btn_save_plan_, 4);
-    gtk_widget_set_margin_bottom(btn_save_plan_, 4);
-    gtk_widget_set_hexpand(btn_save_plan_, TRUE);
-    gtk_box_append(GTK_BOX(left), btn_save_plan_);
+    gtk_box_append(GTK_BOX(btn_box), btn_save_plan_);
+
+    gtk_box_append(GTK_BOX(task_controls_), btn_box);
+    gtk_box_append(GTK_BOX(left), task_controls_);
 
     gtk_paned_set_start_child(GTK_PANED(root_), left);
     gtk_paned_set_shrink_start_child(GTK_PANED(root_), FALSE);
@@ -269,6 +274,8 @@ void PlanView::on_task_selected(GtkListBox*, GtkListBoxRow* row, gpointer data) 
 
         auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
         auto result = show_unsaved_dialog(parent);
+        if (result == UnsavedResult::Cancel)
+            return;
         if (result == UnsavedResult::Save)
             self->save_dirty();
         else
@@ -374,6 +381,8 @@ void PlanView::on_close_plan(GtkButton*, gpointer data) {
     if (self->is_dirty()) {
         auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
         auto result = show_unsaved_dialog(parent);
+        if (result == UnsavedResult::Cancel)
+            return;
         if (result == UnsavedResult::Save)
             self->save_dirty();
     }
@@ -443,6 +452,9 @@ void PlanView::update_plan_buttons() {
     gtk_widget_set_visible(btn_open_plan_, !has_plan);
     gtk_widget_set_visible(btn_create_plan_, !has_plan);
     gtk_widget_set_visible(btn_close_plan_, has_plan);
+    gtk_widget_set_sensitive(task_controls_, has_plan);
+    if (!has_plan)
+        unit_editor_->clear();
 }
 
 void PlanView::refresh() {

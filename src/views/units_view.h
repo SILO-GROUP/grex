@@ -57,13 +57,6 @@ private:
     static void on_edit_unit(GtkButton* btn, gpointer data);
     static void on_move_up(GtkButton* btn, gpointer data);
     static void on_move_down(GtkButton* btn, gpointer data);
-    void cancel_rename();
-    void finish_rename(const std::string& new_name);
-
-    GtkListBoxRow* rename_row_ = nullptr;
-    GtkWidget* rename_old_label_ = nullptr;
-    int rename_unit_idx_ = -1;
-    bool rename_active_ = false;
 };
 
 }

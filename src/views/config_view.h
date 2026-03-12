@@ -57,6 +57,7 @@ private:
     GtkWidget* btn_create_;
     GtkWidget* btn_close_;
     GtkWidget* btn_save_;
+    GtkWidget* config_content_;
 
     void build_config_fields();
     void build_variables_section();
