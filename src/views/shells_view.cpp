@@ -17,13 +17,8 @@
 */
 
 #include "views/shells_view.h"
+#include <algorithm>
 #include <cstring>
-
-static int sort_listbox_alpha(GtkListBoxRow* a, GtkListBoxRow* b, gpointer) {
-    auto* la = GTK_LABEL(gtk_list_box_row_get_child(GTK_LIST_BOX_ROW(a)));
-    auto* lb = GTK_LABEL(gtk_list_box_row_get_child(GTK_LIST_BOX_ROW(b)));
-    return std::strcmp(gtk_label_get_text(la), gtk_label_get_text(lb));
-}
 
 namespace grex {
 
@@ -50,11 +45,15 @@ ShellsView::ShellsView(Project& project) : project_(project) {
     gtk_widget_add_css_class(file_scroll, "frame");
     file_listbox_ = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(file_listbox_), GTK_SELECTION_SINGLE);
-    gtk_list_box_set_sort_func(GTK_LIST_BOX(file_listbox_), sort_listbox_alpha, nullptr, nullptr);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(file_scroll), file_listbox_);
     gtk_box_append(GTK_BOX(left), file_scroll);
 
+    auto* file_ctrl_frame = gtk_frame_new("File Controls");
     auto* file_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(file_btn_box, 8);
+    gtk_widget_set_margin_end(file_btn_box, 8);
+    gtk_widget_set_margin_top(file_btn_box, 8);
+    gtk_widget_set_margin_bottom(file_btn_box, 8);
 
     auto* file_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(file_edit_group, "linked");
@@ -67,7 +66,11 @@ ShellsView::ShellsView(Project& project) : project_(project) {
     btn_save_ = gtk_button_new_with_label("Save File");
     gtk_box_append(GTK_BOX(file_btn_box), btn_save_);
 
-    gtk_box_append(GTK_BOX(left), file_btn_box);
+    auto* btn_refresh = gtk_button_new_with_label("Refresh");
+    gtk_box_append(GTK_BOX(file_btn_box), btn_refresh);
+
+    gtk_frame_set_child(GTK_FRAME(file_ctrl_frame), file_btn_box);
+    gtk_box_append(GTK_BOX(left), file_ctrl_frame);
 
     gtk_paned_set_start_child(GTK_PANED(root_), left);
     gtk_paned_set_shrink_start_child(GTK_PANED(root_), FALSE);
@@ -94,7 +97,12 @@ ShellsView::ShellsView(Project& project) : project_(project) {
     gtk_box_append(GTK_BOX(right), shell_scroll);
 
     // Shell action buttons
+    auto* shell_ctrl_frame = gtk_frame_new("Shell Controls");
     auto* shell_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(shell_btn_box, 8);
+    gtk_widget_set_margin_end(shell_btn_box, 8);
+    gtk_widget_set_margin_top(shell_btn_box, 8);
+    gtk_widget_set_margin_bottom(shell_btn_box, 8);
 
     auto* shell_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(shell_edit_group, "linked");
@@ -106,13 +114,14 @@ ShellsView::ShellsView(Project& project) : project_(project) {
 
     auto* move_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(move_group, "linked");
-    auto* btn_move_up = gtk_button_new_with_label("Up");
-    auto* btn_move_down = gtk_button_new_with_label("Down");
+    auto* btn_move_up = gtk_button_new_with_label("Move Up");
+    auto* btn_move_down = gtk_button_new_with_label("Move Down");
     gtk_box_append(GTK_BOX(move_group), btn_move_up);
     gtk_box_append(GTK_BOX(move_group), btn_move_down);
     gtk_box_append(GTK_BOX(shell_btn_box), move_group);
 
-    gtk_box_append(GTK_BOX(right), shell_btn_box);
+    gtk_frame_set_child(GTK_FRAME(shell_ctrl_frame), shell_btn_box);
+    gtk_box_append(GTK_BOX(right), shell_ctrl_frame);
 
     // Shell properties editor
     gtk_box_append(GTK_BOX(right), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
@@ -155,6 +164,11 @@ ShellsView::ShellsView(Project& project) : project_(project) {
     g_signal_connect(btn_move_up, "clicked", G_CALLBACK(on_move_up), this);
     g_signal_connect(btn_move_down, "clicked", G_CALLBACK(on_move_down), this);
 
+    g_signal_connect(btn_refresh, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
+        auto* self = static_cast<ShellsView*>(d);
+        self->refresh();
+    }), this);
+
     g_signal_connect(shell_listbox_, "row-selected", G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer d) {
         auto* self = static_cast<ShellsView*>(d);
         if (!row) { self->clear_editor(); return; }
@@ -163,11 +177,11 @@ ShellsView::ShellsView(Project& project) : project_(project) {
 
     g_signal_connect(btn_save_, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
         auto* self = static_cast<ShellsView*>(d);
-        if (self->current_file_idx_ < 0 || self->current_file_idx_ >= (int)self->project_.shell_files.size()) {
+        if (!self->selected_file_) {
             self->project_.report_status("Error: no shell file selected");
             return;
         }
-        auto& sf = self->project_.shell_files[self->current_file_idx_];
+        auto& sf = *self->selected_file_;
         try {
             sf.save();
             self->file_dirty_ = false;
@@ -182,9 +196,9 @@ ShellsView::ShellsView(Project& project) : project_(project) {
     auto bind = [this](GtkWidget* entry) {
         g_signal_connect(entry, "changed", G_CALLBACK(+[](GtkEditable* e, gpointer d) {
             auto* self = static_cast<ShellsView*>(d);
-            if (self->loading_ || self->current_file_idx_ < 0 || self->current_shell_idx_ < 0)
+            if (self->loading_ || !self->selected_file_ || self->current_shell_idx_ < 0)
                 return;
-            auto& sf = self->project_.shell_files[self->current_file_idx_];
+            auto& sf = *self->selected_file_;
             if (self->current_shell_idx_ >= (int)sf.shells.size()) return;
             auto& s = sf.shells[self->current_shell_idx_];
             auto text = std::string(gtk_editable_get_text(e));
@@ -215,15 +229,29 @@ void ShellsView::mark_file_dirty() {
     gtk_widget_add_css_class(btn_save_, "suggested-action");
 }
 
+GtkListBoxRow* ShellsView::find_file_row(ShellsFile* sf) {
+    for (int i = 0; ; i++) {
+        auto* row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(file_listbox_), i);
+        if (!row) return nullptr;
+        if (g_object_get_data(G_OBJECT(row), "shell-file") == sf) return row;
+    }
+}
+
 void ShellsView::populate_file_list() {
     GtkWidget* child;
     while ((child = gtk_widget_get_first_child(file_listbox_)) != nullptr)
         gtk_list_box_remove(GTK_LIST_BOX(file_listbox_), child);
 
-    current_file_idx_ = -1;
+    selected_file_ = nullptr;
+
+    std::sort(project_.shell_files.begin(), project_.shell_files.end(),
+        [](const ShellsFile& a, const ShellsFile& b) {
+            return a.filepath.filename().string() < b.filepath.filename().string();
+        });
 
     for (auto& sf : project_.shell_files) {
         auto* row = gtk_list_box_row_new();
+        g_object_set_data(G_OBJECT(row), "shell-file", &sf);
         auto text = std::string("\u25C6 ") + sf.filepath.filename().string();
         auto* label = gtk_label_new(text.c_str());
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
@@ -246,16 +274,15 @@ void ShellsView::populate_shell_list() {
     current_shell_idx_ = -1;
     clear_editor();
 
-    if (current_file_idx_ < 0 || current_file_idx_ >= (int)project_.shell_files.size()) {
+    if (!selected_file_) {
         gtk_label_set_markup(GTK_LABEL(file_label_), "<b>No file selected</b>");
         return;
     }
 
-    auto& sf = project_.shell_files[current_file_idx_];
     gtk_label_set_markup(GTK_LABEL(file_label_),
-        (std::string("<b>") + sf.filepath.filename().string() + "</b>").c_str());
+        (std::string("<b>") + selected_file_->filepath.filename().string() + "</b>").c_str());
 
-    for (auto& s : sf.shells) {
+    for (auto& s : selected_file_->shells) {
         auto* row = gtk_list_box_row_new();
         auto text = std::string("\u25B8 ") + s.name;
         auto* label = gtk_label_new(text.c_str());
@@ -280,11 +307,11 @@ void ShellsView::clear_editor() {
 }
 
 void ShellsView::load_shell(int idx) {
-    if (current_file_idx_ < 0 || current_file_idx_ >= (int)project_.shell_files.size()) {
+    if (!selected_file_) {
         clear_editor();
         return;
     }
-    auto& sf = project_.shell_files[current_file_idx_];
+    auto& sf = *selected_file_;
     if (idx < 0 || idx >= (int)sf.shells.size()) {
         clear_editor();
         return;
@@ -308,11 +335,11 @@ void ShellsView::refresh() {
 void ShellsView::on_file_selected(GtkListBox*, GtkListBoxRow* row, gpointer data) {
     auto* self = static_cast<ShellsView*>(data);
     if (!row) {
-        self->current_file_idx_ = -1;
+        self->selected_file_ = nullptr;
         self->populate_shell_list();
         return;
     }
-    self->current_file_idx_ = gtk_list_box_row_get_index(row);
+    self->selected_file_ = static_cast<ShellsFile*>(g_object_get_data(G_OBJECT(row), "shell-file"));
     self->file_dirty_ = false;
     gtk_widget_remove_css_class(self->btn_save_, "suggested-action");
     self->populate_shell_list();
@@ -371,10 +398,14 @@ void ShellsView::on_new_file_response(GObject* source, GAsyncResult* res, gpoint
         self->project_.shell_files.push_back(std::move(sf));
         self->populate_file_list();
 
-        int last = (int)self->project_.shell_files.size() - 1;
-        auto* row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(self->file_listbox_), last);
-        if (row)
-            gtk_list_box_select_row(GTK_LIST_BOX(self->file_listbox_), row);
+        // Select the new file by matching filepath
+        for (auto& f : self->project_.shell_files) {
+            if (f.filepath == fp) {
+                auto* row = self->find_file_row(&f);
+                if (row) gtk_list_box_select_row(GTK_LIST_BOX(self->file_listbox_), row);
+                break;
+            }
+        }
 
         self->project_.report_status("Created shell file: " + fp.filename().string());
     } catch (const std::exception& e) {
@@ -384,26 +415,28 @@ void ShellsView::on_new_file_response(GObject* source, GAsyncResult* res, gpoint
 
 void ShellsView::on_delete_file(GtkButton*, gpointer data) {
     auto* self = static_cast<ShellsView*>(data);
-    if (self->current_file_idx_ < 0 || self->current_file_idx_ >= (int)self->project_.shell_files.size())
-        return;
+    if (!self->selected_file_) return;
 
-    auto& sf = self->project_.shell_files[self->current_file_idx_];
-    auto name = sf.filepath.filename().string();
+    auto name = self->selected_file_->filepath.filename().string();
 
-    self->project_.shell_files.erase(self->project_.shell_files.begin() + self->current_file_idx_);
-    self->current_file_idx_ = -1;
+    auto it = std::find_if(self->project_.shell_files.begin(), self->project_.shell_files.end(),
+        [&](const ShellsFile& sf) { return &sf == self->selected_file_; });
+    if (it != self->project_.shell_files.end())
+        self->project_.shell_files.erase(it);
+
+    self->selected_file_ = nullptr;
     self->populate_file_list();
     self->project_.report_status("Removed shell file from project: " + name + " (file not deleted from disk)");
 }
 
 void ShellsView::on_new_shell(GtkButton*, gpointer data) {
     auto* self = static_cast<ShellsView*>(data);
-    if (self->current_file_idx_ < 0 || self->current_file_idx_ >= (int)self->project_.shell_files.size()) {
+    if (!self->selected_file_) {
         self->project_.report_status("Error: select a shell file first");
         return;
     }
 
-    auto& sf = self->project_.shell_files[self->current_file_idx_];
+    auto& sf = *self->selected_file_;
     ShellDef s;
     s.name = "new_shell";
     s.path = "/usr/bin/new_shell";
@@ -421,14 +454,13 @@ void ShellsView::on_new_shell(GtkButton*, gpointer data) {
 
 void ShellsView::on_delete_shell(GtkButton*, gpointer data) {
     auto* self = static_cast<ShellsView*>(data);
-    if (self->current_file_idx_ < 0 || self->current_file_idx_ >= (int)self->project_.shell_files.size())
-        return;
+    if (!self->selected_file_) return;
 
     auto* row = gtk_list_box_get_selected_row(GTK_LIST_BOX(self->shell_listbox_));
     if (!row) return;
 
     int idx = gtk_list_box_row_get_index(row);
-    auto& sf = self->project_.shell_files[self->current_file_idx_];
+    auto& sf = *self->selected_file_;
     if (idx < 0 || idx >= (int)sf.shells.size()) return;
 
     auto name = sf.shells[idx].name;
@@ -440,14 +472,13 @@ void ShellsView::on_delete_shell(GtkButton*, gpointer data) {
 
 void ShellsView::on_move_up(GtkButton*, gpointer data) {
     auto* self = static_cast<ShellsView*>(data);
-    if (self->current_file_idx_ < 0 || self->current_file_idx_ >= (int)self->project_.shell_files.size())
-        return;
+    if (!self->selected_file_) return;
 
     auto* row = gtk_list_box_get_selected_row(GTK_LIST_BOX(self->shell_listbox_));
     if (!row) return;
 
     int idx = gtk_list_box_row_get_index(row);
-    auto& sf = self->project_.shell_files[self->current_file_idx_];
+    auto& sf = *self->selected_file_;
     if (idx <= 0) return;
 
     std::swap(sf.shells[idx], sf.shells[idx - 1]);
@@ -460,14 +491,13 @@ void ShellsView::on_move_up(GtkButton*, gpointer data) {
 
 void ShellsView::on_move_down(GtkButton*, gpointer data) {
     auto* self = static_cast<ShellsView*>(data);
-    if (self->current_file_idx_ < 0 || self->current_file_idx_ >= (int)self->project_.shell_files.size())
-        return;
+    if (!self->selected_file_) return;
 
     auto* row = gtk_list_box_get_selected_row(GTK_LIST_BOX(self->shell_listbox_));
     if (!row) return;
 
     int idx = gtk_list_box_row_get_index(row);
-    auto& sf = self->project_.shell_files[self->current_file_idx_];
+    auto& sf = *self->selected_file_;
     if (idx < 0 || idx >= (int)sf.shells.size() - 1) return;
 
     std::swap(sf.shells[idx], sf.shells[idx + 1]);

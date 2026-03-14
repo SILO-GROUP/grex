@@ -74,7 +74,12 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     gtk_box_append(GTK_BOX(task_controls_), scroll);
 
     // Task action buttons — grouped by function
+    auto* plan_ctrl_frame = gtk_frame_new("Plan Controls");
     auto* btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(btn_box, 8);
+    gtk_widget_set_margin_end(btn_box, 8);
+    gtk_widget_set_margin_top(btn_box, 8);
+    gtk_widget_set_margin_bottom(btn_box, 8);
 
     auto* task_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(task_edit_group, "linked");
@@ -86,8 +91,8 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
 
     auto* move_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(move_group, "linked");
-    auto* btn_up = gtk_button_new_with_label("Up");
-    auto* btn_down = gtk_button_new_with_label("Down");
+    auto* btn_up = gtk_button_new_with_label("Move Up");
+    auto* btn_down = gtk_button_new_with_label("Move Down");
     gtk_box_append(GTK_BOX(move_group), btn_up);
     gtk_box_append(GTK_BOX(move_group), btn_down);
     gtk_box_append(GTK_BOX(btn_box), move_group);
@@ -95,7 +100,11 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     btn_save_plan_ = gtk_button_new_with_label("Save Plan");
     gtk_box_append(GTK_BOX(btn_box), btn_save_plan_);
 
-    gtk_box_append(GTK_BOX(task_controls_), btn_box);
+    auto* btn_refresh = gtk_button_new_with_label("Refresh");
+    gtk_box_append(GTK_BOX(btn_box), btn_refresh);
+
+    gtk_frame_set_child(GTK_FRAME(plan_ctrl_frame), btn_box);
+    gtk_box_append(GTK_BOX(task_controls_), plan_ctrl_frame);
     gtk_box_append(GTK_BOX(left), task_controls_);
 
     gtk_paned_set_start_child(GTK_PANED(root_), left);
@@ -134,6 +143,11 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
         } catch (const std::exception& e) {
             self->project_.report_status(std::string("Error: ") + e.what());
         }
+    }), this);
+
+    g_signal_connect(btn_refresh, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
+        auto* self = static_cast<PlanView*>(d);
+        self->refresh();
     }), this);
 
     update_plan_buttons();
@@ -461,11 +475,19 @@ void PlanView::refresh() {
     // reload units if paths now resolve
     project_.load_all_units();
 
+    // reload the plan from disk if one is loaded
     auto* plan = current_plan();
-    if (plan)
+    if (plan) {
+        try {
+            *plan = Plan::load(plan->filepath);
+            project_.report_status("Reloaded plan: " + plan->filepath.filename().string());
+        } catch (const std::exception& e) {
+            project_.report_status("Error reloading plan: " + std::string(e.what()));
+        }
         gtk_label_set_markup(GTK_LABEL(plan_label_), (std::string("<b>Plan:</b> ") + plan->filepath.filename().string()).c_str());
-    else
+    } else {
         gtk_label_set_markup(GTK_LABEL(plan_label_), "<b>Plan:</b> No plan loaded");
+    }
 
     populate_task_list();
     update_plan_buttons();

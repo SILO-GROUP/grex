@@ -40,12 +40,13 @@ private:
     GtkWidget* file_label_;
     GtkWidget* btn_save_;
 
-    int current_file_idx_ = -1;
+    UnitFile* selected_file_ = nullptr;
     bool file_dirty_ = false;
     bool suppress_selection_ = false;
 
     void populate_file_list();
     void populate_unit_list();
+    GtkListBoxRow* find_file_row(UnitFile* uf);
 
     static void on_file_selected(GtkListBox* box, GtkListBoxRow* row, gpointer data);
     static void on_new_file(GtkButton* btn, gpointer data);

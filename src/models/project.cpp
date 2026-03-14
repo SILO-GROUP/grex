@@ -166,19 +166,32 @@ void Project::load_plan(const fs::path& plan_path) {
 
 void Project::reload_shells() {
     auto sp = resolved_shells_path();
-    if (sp.empty()) return;
-    if (!fs::is_directory(sp)) return;
+    if (sp.empty()) {
+        report_status("Error: shells path not resolved");
+        return;
+    }
+    if (!fs::is_directory(sp)) {
+        report_status("Error: shells path is not a directory: " + sp.string());
+        return;
+    }
 
     shell_files.clear();
+    int file_count = 0;
+    int total_shells = 0;
     for (auto& entry : fs::directory_iterator(sp)) {
         if (entry.path().extension() == ".shells") {
             try {
-                shell_files.push_back(ShellsFile::load(entry.path()));
+                auto sf = ShellsFile::load(entry.path());
+                total_shells += (int)sf.shells.size();
+                file_count++;
+                shell_files.push_back(std::move(sf));
             } catch (const std::exception& e) {
                 report_status("Error loading shells: " + std::string(e.what()));
             }
         }
     }
+    report_status("Loaded " + std::to_string(total_shells) + " shells from " +
+                   std::to_string(file_count) + " files at '" + sp.string() + "'");
 }
 
 std::vector<ShellDef> Project::all_shells() const {

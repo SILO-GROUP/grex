@@ -47,7 +47,7 @@ private:
     GtkWidget* entry_exec_arg_;
     GtkWidget* entry_source_cmd_;
 
-    int current_file_idx_ = -1;
+    ShellsFile* selected_file_ = nullptr;
     int current_shell_idx_ = -1;
     bool loading_ = false;
     bool file_dirty_ = false;
@@ -57,6 +57,7 @@ private:
     void load_shell(int idx);
     void clear_editor();
     void mark_file_dirty();
+    GtkListBoxRow* find_file_row(ShellsFile* sf);
 
     static void on_file_selected(GtkListBox* box, GtkListBoxRow* row, gpointer data);
     static void on_new_file(GtkButton* btn, gpointer data);

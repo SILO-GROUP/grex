@@ -39,15 +39,23 @@ ConfigView::ConfigView(Project& project) : project_(project) {
     root_ = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(root_), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
 
-    auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-    gtk_widget_set_margin_start(box, 16);
-    gtk_widget_set_margin_end(box, 16);
-    gtk_widget_set_margin_top(box, 16);
-    gtk_widget_set_margin_bottom(box, 16);
+    // Outer centering wrapper — keeps form from stretching on wide screens
+    auto* outer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_vexpand(outer, TRUE);
 
-    // === Config file label + Open/Close buttons ===
+    auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
+    gtk_widget_set_margin_start(box, 48);
+    gtk_widget_set_margin_end(box, 48);
+    gtk_widget_set_margin_top(box, 24);
+    gtk_widget_set_margin_bottom(box, 24);
+    gtk_widget_set_hexpand(box, TRUE);
+    gtk_widget_set_size_request(box, -1, -1);
+
+    // === Config file header ===
     config_label_ = gtk_label_new(nullptr);
     gtk_label_set_xalign(GTK_LABEL(config_label_), 0.0f);
+    gtk_label_set_selectable(GTK_LABEL(config_label_), TRUE);
+    gtk_widget_set_margin_bottom(config_label_, 4);
     gtk_box_append(GTK_BOX(box), config_label_);
 
     auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -68,63 +76,61 @@ ConfigView::ConfigView(Project& project) : project_(project) {
     g_signal_connect(btn_close_, "clicked", G_CALLBACK(on_close_config), this);
 
     // === Config content — greyed out when no config loaded ===
-    config_content_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    config_content_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
 
-    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-
-    // === Config fields section ===
-    auto* config_header = gtk_label_new(nullptr);
-    gtk_label_set_markup(GTK_LABEL(config_header), "<b>Configuration</b>");
-    gtk_label_set_xalign(GTK_LABEL(config_header), 0.0f);
-    gtk_box_append(GTK_BOX(config_content_), config_header);
-
+    // === Configuration fields ===
+    auto* config_frame = gtk_frame_new("Configuration");
     config_grid_ = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(config_grid_), 8);
-    gtk_grid_set_column_spacing(GTK_GRID(config_grid_), 12);
-    gtk_box_append(GTK_BOX(config_content_), config_grid_);
+    gtk_grid_set_row_spacing(GTK_GRID(config_grid_), 10);
+    gtk_grid_set_column_spacing(GTK_GRID(config_grid_), 16);
+    gtk_widget_set_margin_start(config_grid_, 12);
+    gtk_widget_set_margin_end(config_grid_, 12);
+    gtk_widget_set_margin_top(config_grid_, 12);
+    gtk_widget_set_margin_bottom(config_grid_, 12);
+    gtk_frame_set_child(GTK_FRAME(config_frame), config_grid_);
+    gtk_box_append(GTK_BOX(config_content_), config_frame);
 
     build_config_fields();
 
-    // === Resolved paths section ===
-    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-
-    auto* resolved_header = gtk_label_new(nullptr);
-    gtk_label_set_markup(GTK_LABEL(resolved_header), "<b>Resolved Paths</b>");
-    gtk_label_set_xalign(GTK_LABEL(resolved_header), 0.0f);
-    gtk_box_append(GTK_BOX(config_content_), resolved_header);
-
+    // === Resolved Paths ===
+    auto* resolved_frame = gtk_frame_new("Resolved Paths");
     resolved_grid_ = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(resolved_grid_), 4);
-    gtk_grid_set_column_spacing(GTK_GRID(resolved_grid_), 12);
-    gtk_box_append(GTK_BOX(config_content_), resolved_grid_);
+    gtk_grid_set_row_spacing(GTK_GRID(resolved_grid_), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(resolved_grid_), 16);
+    gtk_widget_set_margin_start(resolved_grid_, 12);
+    gtk_widget_set_margin_end(resolved_grid_, 12);
+    gtk_widget_set_margin_top(resolved_grid_, 12);
+    gtk_widget_set_margin_bottom(resolved_grid_, 12);
+    gtk_frame_set_child(GTK_FRAME(resolved_frame), resolved_grid_);
+    gtk_box_append(GTK_BOX(config_content_), resolved_frame);
 
-    // === Variables section ===
-    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-
-    auto* vars_header = gtk_label_new(nullptr);
-    gtk_label_set_markup(GTK_LABEL(vars_header), "<b>Variables</b>");
-    gtk_label_set_xalign(GTK_LABEL(vars_header), 0.0f);
-    gtk_box_append(GTK_BOX(config_content_), vars_header);
+    // === Variables ===
+    auto* vars_frame = gtk_frame_new("Variables");
+    auto* vars_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_widget_set_margin_start(vars_box, 12);
+    gtk_widget_set_margin_end(vars_box, 12);
+    gtk_widget_set_margin_top(vars_box, 12);
+    gtk_widget_set_margin_bottom(vars_box, 12);
 
     auto* vars_desc = gtk_label_new("Set values for variables found in config fields. Environment variables are used automatically.");
     gtk_label_set_xalign(GTK_LABEL(vars_desc), 0.0f);
     gtk_label_set_wrap(GTK_LABEL(vars_desc), TRUE);
     gtk_widget_add_css_class(vars_desc, "dim-label");
-    gtk_box_append(GTK_BOX(config_content_), vars_desc);
+    gtk_box_append(GTK_BOX(vars_box), vars_desc);
 
     vars_grid_ = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(vars_grid_), 8);
-    gtk_grid_set_column_spacing(GTK_GRID(vars_grid_), 12);
-    gtk_box_append(GTK_BOX(config_content_), vars_grid_);
+    gtk_grid_set_row_spacing(GTK_GRID(vars_grid_), 10);
+    gtk_grid_set_column_spacing(GTK_GRID(vars_grid_), 16);
+    gtk_box_append(GTK_BOX(vars_box), vars_grid_);
+
+    gtk_frame_set_child(GTK_FRAME(vars_frame), vars_box);
+    gtk_box_append(GTK_BOX(config_content_), vars_frame);
 
     build_variables_section();
     update_resolved_labels();
 
-    // === Save button ===
-    gtk_box_append(GTK_BOX(config_content_), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-
+    // === Save button — full width for presence ===
     btn_save_ = gtk_button_new_with_label("Save Config");
-    gtk_widget_set_halign(btn_save_, GTK_ALIGN_END);
     gtk_box_append(GTK_BOX(config_content_), btn_save_);
 
     g_signal_connect(btn_save_, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
@@ -132,8 +138,9 @@ ConfigView::ConfigView(Project& project) : project_(project) {
     }), this);
 
     gtk_box_append(GTK_BOX(box), config_content_);
+    gtk_box_append(GTK_BOX(outer), box);
 
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(root_), box);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(root_), outer);
 
     update_config_buttons();
 }
@@ -153,6 +160,8 @@ void ConfigView::build_config_fields() {
     for (auto& [key, val] : project_.config.data().items()) {
         auto* label = gtk_label_new(key.c_str());
         gtk_label_set_xalign(GTK_LABEL(label), 1.0f);
+        gtk_widget_set_size_request(label, 140, -1);
+        gtk_widget_add_css_class(label, "dim-label");
         gtk_grid_attach(GTK_GRID(config_grid_), label, 0, row, 1, 1);
 
         auto* entry = gtk_entry_new();
@@ -209,6 +218,8 @@ void ConfigView::build_variables_section() {
         auto var_label = "${" + name + "}";
         auto* lbl = gtk_label_new(var_label.c_str());
         gtk_label_set_xalign(GTK_LABEL(lbl), 1.0f);
+        gtk_widget_set_size_request(lbl, 140, -1);
+        gtk_widget_add_css_class(lbl, "dim-label");
         gtk_grid_attach(GTK_GRID(vars_grid_), lbl, 0, row, 1, 1);
 
         auto* entry = gtk_entry_new();
@@ -277,9 +288,25 @@ void ConfigView::update_resolved_labels() {
                 display = resolved;
         }
 
-        auto* lbl = gtk_label_new(key.c_str());
-        gtk_label_set_xalign(GTK_LABEL(lbl), 1.0f);
-        gtk_grid_attach(GTK_GRID(resolved_grid_), lbl, 0, row, 1, 1);
+        auto* key_lbl = gtk_label_new(key.c_str());
+        gtk_label_set_xalign(GTK_LABEL(key_lbl), 1.0f);
+        gtk_widget_set_size_request(key_lbl, 140, -1);
+        gtk_widget_add_css_class(key_lbl, "dim-label");
+        gtk_grid_attach(GTK_GRID(resolved_grid_), key_lbl, 0, row, 1, 1);
+
+        // Status indicator
+        bool path_ok = (display != "(unresolved)") &&
+                       (std::filesystem::exists(display) || std::filesystem::is_directory(display));
+        auto* indicator = gtk_label_new(nullptr);
+        gtk_label_set_xalign(GTK_LABEL(indicator), 0.5f);
+        if (display == "(unresolved)")
+            gtk_label_set_markup(GTK_LABEL(indicator), "<span foreground=\"#cc0000\">\u2718</span>");
+        else if (path_ok)
+            gtk_label_set_markup(GTK_LABEL(indicator), "<span foreground=\"#4e9a06\">\u2714</span>");
+        else
+            gtk_label_set_markup(GTK_LABEL(indicator), "<span foreground=\"#cc0000\">\u2718</span>");
+        gtk_grid_attach(GTK_GRID(resolved_grid_), indicator, 1, row, 1, 1);
+
         auto* val_label = gtk_label_new(nullptr);
         gtk_label_set_xalign(GTK_LABEL(val_label), 0.0f);
         gtk_label_set_selectable(GTK_LABEL(val_label), TRUE);
@@ -287,26 +314,22 @@ void ConfigView::update_resolved_labels() {
 
         if (display == "(unresolved)") {
             gtk_label_set_markup(GTK_LABEL(val_label),
-                "<span foreground=\"red\">(unresolved)</span>");
-        } else if (std::filesystem::is_directory(display)) {
-            auto markup = "<span foreground=\"green\">" + display + "</span>";
-            gtk_label_set_markup(GTK_LABEL(val_label), markup.c_str());
-        } else if (std::filesystem::exists(display)) {
-            auto markup = "<span foreground=\"green\">" + display + "</span>";
-            gtk_label_set_markup(GTK_LABEL(val_label), markup.c_str());
+                "<span foreground=\"#cc0000\" style=\"italic\">(unresolved)</span>");
+        } else if (path_ok) {
+            gtk_label_set_text(GTK_LABEL(val_label), display.c_str());
         } else {
-            auto markup = "<span foreground=\"red\">" + display + "</span>";
+            auto markup = "<span foreground=\"#cc0000\">" + display + "</span>";
             gtk_label_set_markup(GTK_LABEL(val_label), markup.c_str());
         }
 
-        gtk_grid_attach(GTK_GRID(resolved_grid_), val_label, 1, row, 1, 1);
+        gtk_grid_attach(GTK_GRID(resolved_grid_), val_label, 2, row, 1, 1);
         row++;
     }
 
     if (row == 0) {
         auto* lbl = gtk_label_new("No resolvable paths in config.");
         gtk_label_set_xalign(GTK_LABEL(lbl), 0.0f);
-        gtk_grid_attach(GTK_GRID(resolved_grid_), lbl, 0, 0, 2, 1);
+        gtk_grid_attach(GTK_GRID(resolved_grid_), lbl, 0, 0, 3, 1);
     }
 }
 
@@ -338,10 +361,15 @@ void ConfigView::apply_config() {
 void ConfigView::update_config_buttons() {
     bool has_config = !project_.config_path.empty();
     if (has_config) {
-        auto markup = std::string("<b>Current Rex Config:</b> ") + project_.config_path.filename().string();
+        auto markup = std::string("<span size=\"large\" weight=\"bold\">Rex Config: ") +
+            project_.config_path.filename().string() + "</span>\n" +
+            "<span size=\"small\" alpha=\"60%\">" +
+            project_.config_path.string() + "</span>";
         gtk_label_set_markup(GTK_LABEL(config_label_), markup.c_str());
     } else {
-        gtk_label_set_markup(GTK_LABEL(config_label_), "<b>Current Rex Config:</b> No config loaded");
+        gtk_label_set_markup(GTK_LABEL(config_label_),
+            "<span size=\"large\" weight=\"bold\">Rex Config</span>\n"
+            "<span size=\"small\" alpha=\"60%\">No config loaded</span>");
     }
     gtk_widget_set_visible(btn_open_, !has_config);
     gtk_widget_set_visible(btn_create_, !has_config);
