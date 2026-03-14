@@ -27,17 +27,20 @@ UnitEditor::UnitEditor(Project& project, GrexConfig& grex_config)
     root_ = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(root_), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
 
-    auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_widget_set_margin_start(box, 16);
-    gtk_widget_set_margin_end(box, 16);
-    gtk_widget_set_margin_top(box, 16);
-    gtk_widget_set_margin_bottom(box, 16);
+    content_box_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_margin_start(content_box_, 16);
+    gtk_widget_set_margin_end(content_box_, 16);
+    gtk_widget_set_margin_top(content_box_, 16);
+    gtk_widget_set_margin_bottom(content_box_, 16);
+    auto* box = content_box_;
 
-    // Task section header
+    // Task properties container — disabled when no task selected
+    task_section_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+
     auto* task_label = gtk_label_new(nullptr);
     gtk_label_set_markup(GTK_LABEL(task_label), "<b>Task Properties</b>");
     gtk_label_set_xalign(GTK_LABEL(task_label), 0.0f);
-    gtk_box_append(GTK_BOX(box), task_label);
+    gtk_box_append(GTK_BOX(task_section_), task_label);
 
     auto* task_grid = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(task_grid), 6);
@@ -60,30 +63,33 @@ UnitEditor::UnitEditor(Project& project, GrexConfig& grex_config)
     gtk_widget_set_hexpand(entry_comment_, TRUE);
     gtk_grid_attach(GTK_GRID(task_grid), entry_comment_, 1, 1, 1, 1);
 
-    // Change/Select Unit button — aligned with the value column
+    gtk_box_append(GTK_BOX(task_section_), task_grid);
+    gtk_box_append(GTK_BOX(box), task_section_);
+
+    // Underlying Unit controls — exposed for external placement
+    unit_controls_ = gtk_frame_new("Underlying Unit");
+    auto* unit_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(unit_btn_box, 8);
+    gtk_widget_set_margin_end(unit_btn_box, 8);
+    gtk_widget_set_margin_top(unit_btn_box, 8);
+    gtk_widget_set_margin_bottom(unit_btn_box, 8);
+
     btn_select_unit_ = gtk_button_new_with_label("Change/Select Unit...");
-    gtk_widget_set_halign(btn_select_unit_, GTK_ALIGN_START);
     g_signal_connect(btn_select_unit_, "clicked", G_CALLBACK(on_select_unit), this);
-    gtk_grid_attach(GTK_GRID(task_grid), btn_select_unit_, 1, 2, 1, 1);
+    gtk_box_append(GTK_BOX(unit_btn_box), btn_select_unit_);
 
-    gtk_box_append(GTK_BOX(box), task_grid);
-
-    // Buttons below task properties
-    gtk_box_append(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-
-    auto* btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     btn_edit_unit_ = gtk_button_new_with_label("Edit Unit...");
     g_signal_connect(btn_edit_unit_, "clicked", G_CALLBACK(on_edit_unit), this);
-    gtk_box_append(GTK_BOX(btn_row), btn_edit_unit_);
+    gtk_box_append(GTK_BOX(unit_btn_box), btn_edit_unit_);
 
     btn_save_unit_ = gtk_button_new_with_label("Save Unit");
     g_signal_connect(btn_save_unit_, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
         auto* self = static_cast<UnitEditor*>(d);
         self->save_current();
     }), this);
-    gtk_box_append(GTK_BOX(btn_row), btn_save_unit_);
+    gtk_box_append(GTK_BOX(unit_btn_box), btn_save_unit_);
 
-    gtk_box_append(GTK_BOX(box), btn_row);
+    gtk_frame_set_child(GTK_FRAME(unit_controls_), unit_btn_box);
 
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(root_), box);
 
@@ -108,12 +114,14 @@ void UnitEditor::clear() {
 
     gtk_label_set_text(GTK_LABEL(name_display_), "");
     gtk_editable_set_text(GTK_EDITABLE(entry_comment_), "");
-    gtk_widget_set_sensitive(root_, FALSE);
+    gtk_widget_set_sensitive(task_section_, FALSE);
+    gtk_widget_set_sensitive(unit_controls_, FALSE);
     clear_dirty();
 }
 
 void UnitEditor::load(Task* task, Unit* unit) {
-    gtk_widget_set_sensitive(root_, TRUE);
+    gtk_widget_set_sensitive(task_section_, TRUE);
+    gtk_widget_set_sensitive(unit_controls_, TRUE);
     g_signal_handlers_disconnect_by_data(entry_comment_, this);
     current_task_ = task;
     current_unit_ = unit;

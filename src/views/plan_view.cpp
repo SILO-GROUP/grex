@@ -73,37 +73,25 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), task_listbox_);
     gtk_box_append(GTK_BOX(task_controls_), scroll);
 
-    // Task action buttons — grouped by function
+    // Plan Controls — plan-level actions
     auto* plan_ctrl_frame = gtk_frame_new("Plan Controls");
-    auto* btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_set_margin_start(btn_box, 8);
-    gtk_widget_set_margin_end(btn_box, 8);
-    gtk_widget_set_margin_top(btn_box, 8);
-    gtk_widget_set_margin_bottom(btn_box, 8);
-
-    auto* task_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_add_css_class(task_edit_group, "linked");
-    auto* btn_add = gtk_button_new_with_label("Add");
-    auto* btn_del = gtk_button_new_with_label("Delete");
-    gtk_box_append(GTK_BOX(task_edit_group), btn_add);
-    gtk_box_append(GTK_BOX(task_edit_group), btn_del);
-    gtk_box_append(GTK_BOX(btn_box), task_edit_group);
-
-    auto* move_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_add_css_class(move_group, "linked");
-    auto* btn_up = gtk_button_new_with_label("Move Up");
-    auto* btn_down = gtk_button_new_with_label("Move Down");
-    gtk_box_append(GTK_BOX(move_group), btn_up);
-    gtk_box_append(GTK_BOX(move_group), btn_down);
-    gtk_box_append(GTK_BOX(btn_box), move_group);
+    auto* plan_btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(plan_btn_box, 8);
+    gtk_widget_set_margin_end(plan_btn_box, 8);
+    gtk_widget_set_margin_top(plan_btn_box, 8);
+    gtk_widget_set_margin_bottom(plan_btn_box, 8);
 
     btn_save_plan_ = gtk_button_new_with_label("Save Plan");
-    gtk_box_append(GTK_BOX(btn_box), btn_save_plan_);
+    gtk_box_append(GTK_BOX(plan_btn_box), btn_save_plan_);
 
-    auto* btn_refresh = gtk_button_new_with_label("Refresh");
-    gtk_box_append(GTK_BOX(btn_box), btn_refresh);
+    auto* btn_refresh = gtk_button_new_with_label("Reload Plan");
+    gtk_box_append(GTK_BOX(plan_btn_box), btn_refresh);
 
-    gtk_frame_set_child(GTK_FRAME(plan_ctrl_frame), btn_box);
+    auto* btn_delete_plan = gtk_button_new_with_label("Delete Plan");
+    gtk_widget_add_css_class(btn_delete_plan, "destructive-action");
+    gtk_box_append(GTK_BOX(plan_btn_box), btn_delete_plan);
+
+    gtk_frame_set_child(GTK_FRAME(plan_ctrl_frame), plan_btn_box);
     gtk_box_append(GTK_BOX(task_controls_), plan_ctrl_frame);
     gtk_box_append(GTK_BOX(left), task_controls_);
 
@@ -114,6 +102,38 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     unit_editor_ = new UnitEditor(project_, grex_config_);
     gtk_paned_set_end_child(GTK_PANED(root_), unit_editor_->widget());
     gtk_paned_set_shrink_end_child(GTK_PANED(root_), FALSE);
+
+    // Task Controls — appended inside UnitEditor's content area
+    task_ctrl_frame_ = gtk_frame_new("Task Controls");
+    auto* task_ctrl_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_margin_start(task_ctrl_box, 8);
+    gtk_widget_set_margin_end(task_ctrl_box, 8);
+    gtk_widget_set_margin_top(task_ctrl_box, 8);
+    gtk_widget_set_margin_bottom(task_ctrl_box, 8);
+
+    auto* task_btn_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+
+    auto* task_edit_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(task_edit_group, "linked");
+    auto* btn_add = gtk_button_new_with_label("Add Task");
+    auto* btn_del = gtk_button_new_with_label("Delete Task");
+    gtk_box_append(GTK_BOX(task_edit_group), btn_add);
+    gtk_box_append(GTK_BOX(task_edit_group), btn_del);
+    gtk_box_append(GTK_BOX(task_btn_row), task_edit_group);
+
+    auto* move_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(move_group, "linked");
+    btn_move_up_ = gtk_button_new_with_label("Move Up");
+    btn_move_down_ = gtk_button_new_with_label("Move Down");
+    gtk_box_append(GTK_BOX(move_group), btn_move_up_);
+    gtk_box_append(GTK_BOX(move_group), btn_move_down_);
+    gtk_box_append(GTK_BOX(task_btn_row), move_group);
+
+    gtk_box_append(GTK_BOX(task_ctrl_box), task_btn_row);
+    gtk_box_append(GTK_BOX(task_ctrl_box), unit_editor_->unit_controls());
+
+    gtk_frame_set_child(GTK_FRAME(task_ctrl_frame_), task_ctrl_box);
+    gtk_box_append(GTK_BOX(unit_editor_->content_box()), task_ctrl_frame_);
 
     // Name change callback to refresh the task list row label
     unit_editor_->set_name_changed_callback([](const std::string&, void* data) {
@@ -131,8 +151,8 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     g_signal_connect(task_listbox_, "row-selected", G_CALLBACK(on_task_selected), this);
     g_signal_connect(btn_add, "clicked", G_CALLBACK(on_add_task), this);
     g_signal_connect(btn_del, "clicked", G_CALLBACK(on_delete_task), this);
-    g_signal_connect(btn_up, "clicked", G_CALLBACK(on_move_up), this);
-    g_signal_connect(btn_down, "clicked", G_CALLBACK(on_move_down), this);
+    g_signal_connect(btn_move_up_, "clicked", G_CALLBACK(on_move_up), this);
+    g_signal_connect(btn_move_down_, "clicked", G_CALLBACK(on_move_down), this);
 
     g_signal_connect(btn_save_plan_, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
         auto* self = static_cast<PlanView*>(d);
@@ -149,6 +169,8 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
         auto* self = static_cast<PlanView*>(d);
         self->refresh();
     }), this);
+
+    g_signal_connect(btn_delete_plan, "clicked", G_CALLBACK(on_delete_plan), this);
 
     update_plan_buttons();
 
@@ -183,6 +205,7 @@ void PlanView::populate_task_list() {
         gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), label);
         gtk_list_box_append(GTK_LIST_BOX(task_listbox_), row);
     }
+    update_move_buttons();
 }
 
 void PlanView::refresh_task_row(int idx) {
@@ -216,6 +239,7 @@ void PlanView::select_task(int idx) {
     Unit* unit = project_.find_unit(task.name);
 
     unit_editor_->load(&task, unit);
+    update_move_buttons();
 }
 
 // --- Open Plan ---
@@ -403,6 +427,50 @@ void PlanView::on_close_plan(GtkButton*, gpointer data) {
     self->close_plan_impl();
 }
 
+void PlanView::on_delete_plan(GtkButton*, gpointer data) {
+    auto* self = static_cast<PlanView*>(data);
+    auto* plan = self->current_plan();
+    if (!plan) {
+        self->project_.report_status("Error: no plan loaded");
+        return;
+    }
+
+    auto filepath = plan->filepath;
+    auto name = filepath.filename().string();
+
+    // Confirm deletion
+    auto* parent = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
+    auto* dialog = gtk_alert_dialog_new("Delete plan file '%s' from disk?", name.c_str());
+    gtk_alert_dialog_set_detail(dialog, "This action cannot be undone.");
+    gtk_alert_dialog_set_buttons(dialog, (const char*[]){"Cancel", "Delete", nullptr});
+    gtk_alert_dialog_set_cancel_button(dialog, 0);
+    gtk_alert_dialog_set_default_button(dialog, 0);
+
+    struct DeleteCtx { PlanView* view; std::filesystem::path path; std::string name; };
+    auto* ctx = new DeleteCtx{self, filepath, name};
+
+    gtk_alert_dialog_choose(dialog, parent, nullptr,
+        +[](GObject* source, GAsyncResult* res, gpointer d) {
+            auto* ctx = static_cast<DeleteCtx*>(d);
+            GError* error = nullptr;
+            int choice = gtk_alert_dialog_choose_finish(GTK_ALERT_DIALOG(source), res, &error);
+            if (error) { g_error_free(error); delete ctx; return; }
+            if (choice != 1) { delete ctx; return; }  // not "Delete"
+
+            // Close the plan first
+            ctx->view->close_plan_impl();
+
+            // Delete from disk
+            std::error_code ec;
+            if (std::filesystem::remove(ctx->path, ec))
+                ctx->view->project_.report_status("Deleted plan file: " + ctx->name);
+            else
+                ctx->view->project_.report_status("Error: could not delete " + ctx->name +
+                    (ec ? ": " + ec.message() : ""));
+            delete ctx;
+        }, ctx);
+}
+
 void PlanView::on_create_plan(GtkButton*, gpointer data) {
     auto* self = static_cast<PlanView*>(data);
     auto* window = gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW);
@@ -467,8 +535,21 @@ void PlanView::update_plan_buttons() {
     gtk_widget_set_visible(btn_create_plan_, !has_plan);
     gtk_widget_set_visible(btn_close_plan_, has_plan);
     gtk_widget_set_sensitive(task_controls_, has_plan);
+    gtk_widget_set_sensitive(task_ctrl_frame_, has_plan);
     if (!has_plan)
         unit_editor_->clear();
+}
+
+void PlanView::update_move_buttons() {
+    auto* plan = current_plan();
+    if (!plan || current_task_idx_ < 0) {
+        gtk_widget_set_sensitive(btn_move_up_, FALSE);
+        gtk_widget_set_sensitive(btn_move_down_, FALSE);
+        return;
+    }
+    int count = (int)plan->tasks.size();
+    gtk_widget_set_sensitive(btn_move_up_, current_task_idx_ > 0);
+    gtk_widget_set_sensitive(btn_move_down_, current_task_idx_ < count - 1);
 }
 
 void PlanView::refresh() {

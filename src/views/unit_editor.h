@@ -29,6 +29,8 @@ public:
     UnitEditor(Project& project, GrexConfig& grex_config);
     ~UnitEditor() = default;
     GtkWidget* widget() { return root_; }
+    GtkWidget* content_box() { return content_box_; }
+    GtkWidget* unit_controls() { return unit_controls_; }
 
     void load(Task* task, Unit* unit);
     void clear();
@@ -49,6 +51,9 @@ private:
     Unit* current_unit_ = nullptr;
     std::string current_unit_name_;
     GtkWidget* root_;
+    GtkWidget* content_box_;
+    GtkWidget* unit_controls_;
+    GtkWidget* task_section_;
 
     // task fields
     GtkWidget* name_display_;

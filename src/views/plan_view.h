@@ -45,6 +45,9 @@ private:
     GtkWidget* btn_close_plan_;
     GtkWidget* btn_save_plan_;
     GtkWidget* task_controls_;   // container for task list + buttons
+    GtkWidget* task_ctrl_frame_; // Task Controls frame in right panel
+    GtkWidget* btn_move_up_;
+    GtkWidget* btn_move_down_;
     UnitEditor* unit_editor_;
 
     int current_task_idx_ = -1;
@@ -64,11 +67,13 @@ private:
     static void on_move_up(GtkButton* btn, gpointer data);
     static void on_move_down(GtkButton* btn, gpointer data);
     static void on_close_plan(GtkButton* btn, gpointer data);
+    static void on_delete_plan(GtkButton* btn, gpointer data);
     static void on_create_plan(GtkButton* btn, gpointer data);
     static void on_create_plan_response(GObject* source, GAsyncResult* res, gpointer data);
 
     void refresh_task_row(int idx);
     void update_plan_buttons();
+    void update_move_buttons();
     void close_plan_impl();
 };
 

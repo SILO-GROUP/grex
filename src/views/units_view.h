@@ -39,6 +39,8 @@ private:
     GtkWidget* unit_listbox_;
     GtkWidget* file_label_;
     GtkWidget* btn_save_;
+    GtkWidget* btn_move_up_;
+    GtkWidget* btn_move_down_;
 
     UnitFile* selected_file_ = nullptr;
     bool file_dirty_ = false;
@@ -46,6 +48,7 @@ private:
 
     void populate_file_list();
     void populate_unit_list();
+    void update_move_buttons();
     GtkListBoxRow* find_file_row(UnitFile* uf);
 
     static void on_file_selected(GtkListBox* box, GtkListBoxRow* row, gpointer data);

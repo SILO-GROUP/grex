@@ -123,10 +123,10 @@ UnitsView::UnitsView(Project& project, GrexConfig& grex_config)
 
     auto* move_group = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(move_group, "linked");
-    auto* btn_move_up = gtk_button_new_with_label("Move Up");
-    auto* btn_move_down = gtk_button_new_with_label("Move Down");
-    gtk_box_append(GTK_BOX(move_group), btn_move_up);
-    gtk_box_append(GTK_BOX(move_group), btn_move_down);
+    btn_move_up_ = gtk_button_new_with_label("Move Up");
+    btn_move_down_ = gtk_button_new_with_label("Move Down");
+    gtk_box_append(GTK_BOX(move_group), btn_move_up_);
+    gtk_box_append(GTK_BOX(move_group), btn_move_down_);
     gtk_box_append(GTK_BOX(unit_btn_box), move_group);
 
     gtk_frame_set_child(GTK_FRAME(unit_ctrl_frame), unit_btn_box);
@@ -142,9 +142,12 @@ UnitsView::UnitsView(Project& project, GrexConfig& grex_config)
     g_signal_connect(btn_new_unit, "clicked", G_CALLBACK(on_new_unit), this);
     g_signal_connect(btn_del_unit, "clicked", G_CALLBACK(on_delete_unit), this);
     g_signal_connect(btn_edit_unit, "clicked", G_CALLBACK(on_edit_unit), this);
-    g_signal_connect(btn_move_up, "clicked", G_CALLBACK(on_move_up), this);
-    g_signal_connect(btn_move_down, "clicked", G_CALLBACK(on_move_down), this);
+    g_signal_connect(btn_move_up_, "clicked", G_CALLBACK(on_move_up), this);
+    g_signal_connect(btn_move_down_, "clicked", G_CALLBACK(on_move_down), this);
     g_signal_connect(unit_listbox_, "row-activated", G_CALLBACK(on_unit_activated), this);
+    g_signal_connect(unit_listbox_, "row-selected", G_CALLBACK(+[](GtkListBox*, GtkListBoxRow*, gpointer d) {
+        static_cast<UnitsView*>(d)->update_move_buttons();
+    }), this);
 
     g_signal_connect(btn_refresh, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
         auto* self = static_cast<UnitsView*>(d);
@@ -238,6 +241,25 @@ void UnitsView::populate_unit_list() {
         gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), label);
         gtk_list_box_append(GTK_LIST_BOX(unit_listbox_), row);
     }
+    update_move_buttons();
+}
+
+void UnitsView::update_move_buttons() {
+    if (!selected_file_) {
+        gtk_widget_set_sensitive(btn_move_up_, FALSE);
+        gtk_widget_set_sensitive(btn_move_down_, FALSE);
+        return;
+    }
+    auto* row = gtk_list_box_get_selected_row(GTK_LIST_BOX(unit_listbox_));
+    if (!row) {
+        gtk_widget_set_sensitive(btn_move_up_, FALSE);
+        gtk_widget_set_sensitive(btn_move_down_, FALSE);
+        return;
+    }
+    int idx = gtk_list_box_row_get_index(row);
+    int count = (int)selected_file_->units.size();
+    gtk_widget_set_sensitive(btn_move_up_, idx > 0);
+    gtk_widget_set_sensitive(btn_move_down_, idx < count - 1);
 }
 
 void UnitsView::refresh() {
