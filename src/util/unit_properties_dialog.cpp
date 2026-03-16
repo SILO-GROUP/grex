@@ -19,6 +19,7 @@
 #include "util/unit_properties_dialog.h"
 #include <cstdlib>
 #include <fstream>
+#include <unistd.h>
 
 namespace grex {
 
@@ -93,14 +94,17 @@ struct DialogState {
 };
 
 static void update_sensitivity(DialogState* s);
+static void validate_fields(DialogState* s);
 
 static gboolean dlg_switch_state_set_cb(GtkSwitch* sw, gboolean new_state, gpointer data) {
     auto* b = static_cast<DlgSwitchBinding*>(data);
     gtk_switch_set_state(sw, new_state);
     if (b->state) {
         *b->target = new_state;
-        if (!b->state->loading)
+        if (!b->state->loading) {
             update_sensitivity(b->state);
+            validate_fields(b->state);
+        }
     }
     return TRUE;
 }
@@ -361,6 +365,102 @@ static void update_sensitivity(DialogState* s) {
     show(active && s->working_copy.supply_environment, {s->label_environment, s->box_environment});
 }
 
+static void validate_fields(DialogState* s) {
+    if (s->loading) return;
+
+    auto& u = s->working_copy;
+    namespace fs = std::filesystem;
+
+    auto set_valid = [](GtkWidget* w, bool valid) {
+        if (valid)
+            gtk_widget_remove_css_class(w, "error");
+        else
+            gtk_widget_add_css_class(w, "error");
+    };
+
+    std::string error_msg;
+
+    // Target: must be defined, exist, and be executable
+    {
+        bool valid = true;
+        if (u.target.empty()) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Target is not defined";
+        } else if (!fs::exists(u.target)) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Target does not exist: " + u.target;
+        } else if (access(u.target.c_str(), X_OK) != 0) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Target is not executable: " + u.target;
+        }
+        set_valid(s->entry_target, valid);
+    }
+
+    // Shell definition: if shell command, must reference a known shell
+    if (u.is_shell_command) {
+        bool valid = false;
+        for (auto& sh : *s->shells) {
+            if (sh.name == u.shell_definition) { valid = true; break; }
+        }
+        set_valid(s->dropdown_shell_def, valid);
+        if (!valid && error_msg.empty())
+            error_msg = "Shell definition not found: " + u.shell_definition;
+    } else {
+        set_valid(s->dropdown_shell_def, true);
+    }
+
+    // Working directory: must exist as a directory if enabled
+    if (u.set_working_directory) {
+        bool valid = true;
+        if (u.working_directory.empty()) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Working directory is not defined";
+        } else if (!fs::is_directory(u.working_directory)) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Working directory does not exist: " + u.working_directory;
+        }
+        set_valid(s->entry_workdir, valid);
+    } else {
+        set_valid(s->entry_workdir, true);
+    }
+
+    // Rectifier: must exist and be executable if rectification enabled
+    if (u.rectify) {
+        bool valid = true;
+        if (u.rectifier.empty()) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Rectifier is not defined";
+        } else if (!fs::exists(u.rectifier)) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Rectifier does not exist: " + u.rectifier;
+        } else if (access(u.rectifier.c_str(), X_OK) != 0) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Rectifier is not executable: " + u.rectifier;
+        }
+        set_valid(s->entry_rectifier, valid);
+    } else {
+        set_valid(s->entry_rectifier, true);
+    }
+
+    // Environment file: must exist if supply_environment active
+    if (u.supply_environment) {
+        bool valid = true;
+        if (u.environment.empty()) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Environment file is not defined";
+        } else if (!fs::exists(u.environment)) {
+            valid = false;
+            if (error_msg.empty()) error_msg = "Environment file does not exist: " + u.environment;
+        }
+        set_valid(s->entry_environment, valid);
+    } else {
+        set_valid(s->entry_environment, true);
+    }
+
+    if (!error_msg.empty())
+        s->project->report_status(error_msg);
+}
+
 static void populate_and_connect(DialogState* s) {
     auto& u = s->working_copy;
 
@@ -390,6 +490,7 @@ static void populate_and_connect(DialogState* s) {
     gtk_editable_set_text(GTK_EDITABLE(s->entry_environment), u.environment.c_str());
     update_sensitivity(s);
     s->loading = false;
+    validate_fields(s);
 
     // Entry bindings
     auto bind_entry = [s](GtkWidget* entry, std::string* target) {
@@ -398,6 +499,7 @@ static void populate_and_connect(DialogState* s) {
         g_signal_connect(entry, "changed", G_CALLBACK(+[](GtkEditable* e, gpointer d) {
             auto* eb = static_cast<DlgEntryBinding*>(d);
             *eb->target = gtk_editable_get_text(e);
+            validate_fields(eb->state);
         }), eb);
     };
     bind_entry(s->entry_name, &u.name);
@@ -430,6 +532,7 @@ static void populate_and_connect(DialogState* s) {
         auto idx = gtk_drop_down_get_selected(GTK_DROP_DOWN(obj));
         if (idx < s->shells->size())
             s->working_copy.shell_definition = (*s->shells)[idx].name;
+        validate_fields(s);
     }), s);
 }
 

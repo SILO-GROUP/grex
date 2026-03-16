@@ -41,8 +41,8 @@ public:
     void save_current();
     void revert_current();
 
-    using NameChangedCallback = void(*)(const std::string& new_name, void* data);
-    void set_name_changed_callback(NameChangedCallback cb, void* data);
+    using UnitEditedCallback = void(*)(const std::string& new_name, bool name_changed, void* data);
+    void set_unit_edited_callback(UnitEditedCallback cb, void* data);
 
 private:
     Project& project_;
@@ -62,8 +62,8 @@ private:
     GtkWidget* btn_save_unit_;
     GtkWidget* entry_comment_;
 
-    NameChangedCallback name_cb_ = nullptr;
-    void* name_cb_data_ = nullptr;
+    UnitEditedCallback edit_cb_ = nullptr;
+    void* edit_cb_data_ = nullptr;
 
     bool dirty_ = false;
 

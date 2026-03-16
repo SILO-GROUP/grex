@@ -225,16 +225,7 @@ void MainWindow::refresh_visible_page() {
 
     // Refresh the newly visible page
     if (visible == plan_view_->widget()) {
-        project_.load_all_units();
-        if (!project_.plans.empty()) {
-            auto& plan = project_.plans[0];
-            try {
-                plan = Plan::load(plan.filepath);
-            } catch (const std::exception& e) {
-                project_.report_status(std::string("Error reloading plan: ") + e.what());
-            }
-        }
-        plan_view_->refresh();
+        plan_view_->reload_plan_from_disk();
     } else if (visible == units_view_->widget()) {
         units_view_->refresh();
     } else if (visible == shells_view_->widget()) {

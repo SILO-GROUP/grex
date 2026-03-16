@@ -50,6 +50,7 @@ public:
     std::filesystem::path resolved_units_dir() const;
     std::filesystem::path resolved_shells_path() const;
 
+    bool check_unit_valid(const Unit& u);
     Unit* find_unit(const std::string& unit_name);
     UnitFile* find_unit_file(const std::string& unit_name);
     bool is_unit_name_taken(const std::string& name, const Unit* exclude = nullptr) const;

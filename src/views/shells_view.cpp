@@ -417,7 +417,8 @@ void ShellsView::on_delete_file(GtkButton*, gpointer data) {
     auto* self = static_cast<ShellsView*>(data);
     if (!self->selected_file_) return;
 
-    auto name = self->selected_file_->filepath.filename().string();
+    auto filepath = self->selected_file_->filepath;
+    auto name = filepath.filename().string();
 
     auto it = std::find_if(self->project_.shell_files.begin(), self->project_.shell_files.end(),
         [&](const ShellsFile& sf) { return &sf == self->selected_file_; });
@@ -426,7 +427,13 @@ void ShellsView::on_delete_file(GtkButton*, gpointer data) {
 
     self->selected_file_ = nullptr;
     self->populate_file_list();
-    self->project_.report_status("Removed shell file from project: " + name + " (file not deleted from disk)");
+
+    std::error_code ec;
+    if (std::filesystem::remove(filepath, ec))
+        self->project_.report_status("Deleted shell file: " + name);
+    else
+        self->project_.report_status("Error: could not delete " + name +
+            (ec ? ": " + ec.message() : ""));
 }
 
 void ShellsView::on_new_shell(GtkButton*, gpointer data) {

@@ -18,6 +18,7 @@
 
 #include "models/project.h"
 #include <set>
+#include <unistd.h>
 
 namespace grex {
 namespace fs = std::filesystem;
@@ -48,6 +49,73 @@ fs::path Project::resolved_shells_path() const {
     auto sp = config.get("shells_path");
     if (sp.empty()) return {};
     return root / sp;
+}
+
+bool Project::check_unit_valid(const Unit& u) {
+    namespace fs = std::filesystem;
+
+    if (u.target.empty()) {
+        report_status("Unit '" + u.name + "': target is not defined");
+        return false;
+    }
+    if (!fs::exists(u.target)) {
+        report_status("Unit '" + u.name + "': target does not exist: " + u.target);
+        return false;
+    }
+    if (access(u.target.c_str(), X_OK) != 0) {
+        report_status("Unit '" + u.name + "': target is not executable: " + u.target);
+        return false;
+    }
+
+    if (u.is_shell_command) {
+        bool found = false;
+        for (auto& s : all_shells()) {
+            if (s.name == u.shell_definition) { found = true; break; }
+        }
+        if (!found) {
+            report_status("Unit '" + u.name + "': shell definition not found: " + u.shell_definition);
+            return false;
+        }
+    }
+
+    if (u.set_working_directory) {
+        if (u.working_directory.empty()) {
+            report_status("Unit '" + u.name + "': working directory is not defined");
+            return false;
+        }
+        if (!fs::is_directory(u.working_directory)) {
+            report_status("Unit '" + u.name + "': working directory does not exist: " + u.working_directory);
+            return false;
+        }
+    }
+
+    if (u.rectify) {
+        if (u.rectifier.empty()) {
+            report_status("Unit '" + u.name + "': rectifier is not defined");
+            return false;
+        }
+        if (!fs::exists(u.rectifier)) {
+            report_status("Unit '" + u.name + "': rectifier does not exist: " + u.rectifier);
+            return false;
+        }
+        if (access(u.rectifier.c_str(), X_OK) != 0) {
+            report_status("Unit '" + u.name + "': rectifier is not executable: " + u.rectifier);
+            return false;
+        }
+    }
+
+    if (u.supply_environment) {
+        if (u.environment.empty()) {
+            report_status("Unit '" + u.name + "': environment file is not defined");
+            return false;
+        }
+        if (!fs::exists(u.environment)) {
+            report_status("Unit '" + u.name + "': environment file does not exist: " + u.environment);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 Unit* Project::find_unit(const std::string& unit_name) {

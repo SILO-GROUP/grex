@@ -30,6 +30,7 @@ public:
     PlanView(Project& project, GrexConfig& grex_config);
     GtkWidget* widget() { return root_; }
     void refresh();
+    void reload_plan_from_disk();
     bool is_dirty() const;
     void save_dirty();
     void revert_dirty();

@@ -135,11 +135,13 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
     gtk_frame_set_child(GTK_FRAME(task_ctrl_frame_), task_ctrl_box);
     gtk_box_append(GTK_BOX(unit_editor_->content_box()), task_ctrl_frame_);
 
-    // Name change callback to refresh the task list row label
-    unit_editor_->set_name_changed_callback([](const std::string&, void* data) {
+    // Callback fired after any unit edit in the dialog
+    unit_editor_->set_unit_edited_callback([](const std::string&, bool name_changed, void* data) {
         auto* self = static_cast<PlanView*>(data);
-        self->plan_dirty_ = true;
-        gtk_widget_add_css_class(self->btn_save_plan_, "suggested-action");
+        if (name_changed) {
+            self->plan_dirty_ = true;
+            gtk_widget_add_css_class(self->btn_save_plan_, "suggested-action");
+        }
         if (self->current_task_idx_ >= 0)
             self->refresh_task_row(self->current_task_idx_);
     }, this);
@@ -167,7 +169,7 @@ PlanView::PlanView(Project& project, GrexConfig& grex_config)
 
     g_signal_connect(btn_refresh, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
         auto* self = static_cast<PlanView*>(d);
-        self->refresh();
+        self->reload_plan_from_disk();
     }), this);
 
     g_signal_connect(btn_delete_plan, "clicked", G_CALLBACK(on_delete_plan), this);
@@ -195,8 +197,17 @@ void PlanView::populate_task_list() {
 
     for (auto& task : plan->tasks) {
         auto* row = gtk_list_box_row_new();
-        auto text = std::string("\u25B6 ") + task.name;
-        auto* label = gtk_label_new(text.c_str());
+        auto* label = gtk_label_new(nullptr);
+        auto* escaped = g_markup_escape_text(task.name.c_str(), -1);
+        Unit* unit = project_.find_unit(task.name);
+        bool valid = unit && project_.check_unit_valid(*unit);
+        std::string markup;
+        if (valid)
+            markup = std::string("\u25B6 ") + escaped;
+        else
+            markup = std::string("<span foreground=\"red\">\u25B6 ") + escaped + "</span>";
+        g_free(escaped);
+        gtk_label_set_markup(GTK_LABEL(label), markup.c_str());
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_start(label, 8);
         gtk_widget_set_margin_end(label, 8);
@@ -217,8 +228,17 @@ void PlanView::refresh_task_row(int idx) {
 
     auto* label = gtk_list_box_row_get_child(GTK_LIST_BOX_ROW(row));
     if (GTK_IS_LABEL(label)) {
-        auto text = std::string("\u25B6 ") + plan->tasks[idx].name;
-        gtk_label_set_text(GTK_LABEL(label), text.c_str());
+        auto& task = plan->tasks[idx];
+        auto* escaped = g_markup_escape_text(task.name.c_str(), -1);
+        Unit* unit = project_.find_unit(task.name);
+        bool valid = unit && project_.check_unit_valid(*unit);
+        std::string markup;
+        if (valid)
+            markup = std::string("\u25B6 ") + escaped;
+        else
+            markup = std::string("<span foreground=\"red\">\u25B6 ") + escaped + "</span>";
+        g_free(escaped);
+        gtk_label_set_markup(GTK_LABEL(label), markup.c_str());
     }
 }
 
@@ -237,6 +257,10 @@ void PlanView::select_task(int idx) {
         project_.load_all_units();
 
     Unit* unit = project_.find_unit(task.name);
+    if (unit)
+        project_.check_unit_valid(*unit);
+    else
+        project_.report_status("Unit not found: " + task.name);
 
     unit_editor_->load(&task, unit);
     update_move_buttons();
@@ -552,23 +576,27 @@ void PlanView::update_move_buttons() {
     gtk_widget_set_sensitive(btn_move_down_, current_task_idx_ < count - 1);
 }
 
+void PlanView::reload_plan_from_disk() {
+    auto* plan = current_plan();
+    if (!plan) return;
+    try {
+        *plan = Plan::load(plan->filepath);
+        project_.report_status("Reloaded plan: " + plan->filepath.filename().string());
+    } catch (const std::exception& e) {
+        project_.report_status("Error reloading plan: " + std::string(e.what()));
+    }
+    refresh();
+}
+
 void PlanView::refresh() {
     // reload units if paths now resolve
     project_.load_all_units();
 
-    // reload the plan from disk if one is loaded
     auto* plan = current_plan();
-    if (plan) {
-        try {
-            *plan = Plan::load(plan->filepath);
-            project_.report_status("Reloaded plan: " + plan->filepath.filename().string());
-        } catch (const std::exception& e) {
-            project_.report_status("Error reloading plan: " + std::string(e.what()));
-        }
+    if (plan)
         gtk_label_set_markup(GTK_LABEL(plan_label_), (std::string("<b>Plan:</b> ") + plan->filepath.filename().string()).c_str());
-    } else {
+    else
         gtk_label_set_markup(GTK_LABEL(plan_label_), "<b>Plan:</b> No plan loaded");
-    }
 
     populate_task_list();
     update_plan_buttons();
@@ -577,7 +605,7 @@ void PlanView::refresh() {
 }
 
 bool PlanView::is_dirty() const {
-    return plan_dirty_ || unit_editor_->is_dirty();
+    return plan_dirty_;
 }
 
 void PlanView::save_dirty() {

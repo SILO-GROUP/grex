@@ -145,8 +145,14 @@ UnitsView::UnitsView(Project& project, GrexConfig& grex_config)
     g_signal_connect(btn_move_up_, "clicked", G_CALLBACK(on_move_up), this);
     g_signal_connect(btn_move_down_, "clicked", G_CALLBACK(on_move_down), this);
     g_signal_connect(unit_listbox_, "row-activated", G_CALLBACK(on_unit_activated), this);
-    g_signal_connect(unit_listbox_, "row-selected", G_CALLBACK(+[](GtkListBox*, GtkListBoxRow*, gpointer d) {
-        static_cast<UnitsView*>(d)->update_move_buttons();
+    g_signal_connect(unit_listbox_, "row-selected", G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer d) {
+        auto* self = static_cast<UnitsView*>(d);
+        self->update_move_buttons();
+        if (row && self->selected_file_) {
+            int idx = gtk_list_box_row_get_index(row);
+            if (idx >= 0 && idx < (int)self->selected_file_->units.size())
+                self->project_.check_unit_valid(self->selected_file_->units[idx]);
+        }
     }), this);
 
     g_signal_connect(btn_refresh, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
@@ -231,8 +237,15 @@ void UnitsView::populate_unit_list() {
 
     for (auto& u : selected_file_->units) {
         auto* row = gtk_list_box_row_new();
-        auto text = std::string("\u2022 ") + u.name;
-        auto* label = gtk_label_new(text.c_str());
+        auto* label = gtk_label_new(nullptr);
+        auto* escaped = g_markup_escape_text(u.name.c_str(), -1);
+        std::string markup;
+        if (project_.check_unit_valid(u))
+            markup = std::string("\u2022 ") + escaped;
+        else
+            markup = std::string("<span foreground=\"red\">\u2022 ") + escaped + "</span>";
+        g_free(escaped);
+        gtk_label_set_markup(GTK_LABEL(label), markup.c_str());
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_start(label, 8);
         gtk_widget_set_margin_end(label, 8);
@@ -403,7 +416,8 @@ void UnitsView::on_delete_file(GtkButton*, gpointer data) {
     auto* self = static_cast<UnitsView*>(data);
     if (!self->selected_file_) return;
 
-    auto name = self->selected_file_->filepath.filename().string();
+    auto filepath = self->selected_file_->filepath;
+    auto name = filepath.filename().string();
 
     auto it = std::find_if(self->project_.unit_files.begin(), self->project_.unit_files.end(),
         [&](const UnitFile& uf) { return &uf == self->selected_file_; });
@@ -412,7 +426,13 @@ void UnitsView::on_delete_file(GtkButton*, gpointer data) {
 
     self->selected_file_ = nullptr;
     self->populate_file_list();
-    self->project_.report_status("Removed unit file from project: " + name + " (file not deleted from disk)");
+
+    std::error_code ec;
+    if (std::filesystem::remove(filepath, ec))
+        self->project_.report_status("Deleted unit file: " + name);
+    else
+        self->project_.report_status("Error: could not delete " + name +
+            (ec ? ": " + ec.message() : ""));
 }
 
 void UnitsView::on_new_unit(GtkButton*, gpointer data) {

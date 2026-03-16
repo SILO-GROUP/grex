@@ -191,9 +191,9 @@ void UnitEditor::revert_current() {
     clear_dirty();
 }
 
-void UnitEditor::set_name_changed_callback(NameChangedCallback cb, void* data) {
-    name_cb_ = cb;
-    name_cb_data_ = data;
+void UnitEditor::set_unit_edited_callback(UnitEditedCallback cb, void* data) {
+    edit_cb_ = cb;
+    edit_cb_data_ = data;
 }
 
 void UnitEditor::on_edit_unit(GtkButton*, gpointer data) {
@@ -205,15 +205,17 @@ void UnitEditor::on_edit_unit(GtkButton*, gpointer data) {
         self->project_, self->grex_config_, self->project_.all_shells());
 
     if (result == UnitDialogResult::Save) {
-        // Sync state in case the unit name changed in the dialog
         auto new_name = self->current_unit_->name;
+        bool name_changed = (new_name != self->current_unit_name_);
         self->current_unit_name_ = new_name;
-        if (self->current_task_)
-            self->current_task_->name = new_name;
-        gtk_label_set_text(GTK_LABEL(self->name_display_), new_name.c_str());
-        if (self->name_cb_)
-            self->name_cb_(new_name, self->name_cb_data_);
+        if (name_changed) {
+            if (self->current_task_)
+                self->current_task_->name = new_name;
+            gtk_label_set_text(GTK_LABEL(self->name_display_), new_name.c_str());
+        }
         self->mark_dirty();
+        if (self->edit_cb_)
+            self->edit_cb_(new_name, name_changed, self->edit_cb_data_);
     }
 }
 
@@ -234,7 +236,7 @@ void UnitEditor::on_select_unit(GtkButton*, gpointer data) {
         if (self->current_task_) self->current_task_->name = unit_name;
         Unit* unit = self->project_.find_unit(unit_name);
         self->load(self->current_task_, unit);
-        if (self->name_cb_) self->name_cb_(unit_name, self->name_cb_data_);
+        if (self->edit_cb_) self->edit_cb_(unit_name, true, self->edit_cb_data_);
     });
 }
 
