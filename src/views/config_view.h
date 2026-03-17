@@ -19,6 +19,7 @@
 #pragma once
 #include <gtk/gtk.h>
 #include <vector>
+#include <string>
 #include "models/project.h"
 
 namespace grex {
@@ -58,6 +59,8 @@ private:
     GtkWidget* btn_close_;
     GtkWidget* btn_save_;
     GtkWidget* config_content_;
+    GtkWidget* cwd_entry_;
+    GtkWidget* cwd_status_;
 
     void build_config_fields();
     void build_variables_section();

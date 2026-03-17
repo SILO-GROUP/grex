@@ -19,9 +19,22 @@
 #include <gtk/gtk.h>
 #include <iostream>
 #include <string>
+#include <cstring>
 #include "models/project.h"
 #include "models/grex_config.h"
 #include "views/main_window.h"
+
+// Suppress known GTK4 bug: GtkDropDown's internal arrow GtkImage reports
+// INT_MIN baselines instead of -1, triggering a spurious warning.
+static GLogWriterOutput grex_log_writer(GLogLevelFlags level, const GLogField* fields,
+                                         gsize n_fields, gpointer) {
+    for (gsize i = 0; i < n_fields; i++) {
+        if (std::strcmp(fields[i].key, "MESSAGE") == 0 &&
+            std::strstr(static_cast<const char*>(fields[i].value), "reported baselines") != nullptr)
+            return G_LOG_WRITER_HANDLED;
+    }
+    return g_log_writer_default(level, fields, n_fields, nullptr);
+}
 
 static grex::Project* g_project = nullptr;
 static grex::GrexConfig* g_grex_config = nullptr;
@@ -65,6 +78,7 @@ static void on_activate(GtkApplication* app, gpointer) {
 }
 
 int main(int argc, char* argv[]) {
+    g_log_set_writer_func(grex_log_writer, nullptr, nullptr);
     auto* app = gtk_application_new("org.darkhorselinux.grex", G_APPLICATION_HANDLES_COMMAND_LINE);
 
     GOptionEntry entries[] = {

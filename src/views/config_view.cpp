@@ -19,8 +19,12 @@
 #include "views/config_view.h"
 #include "util/unsaved_dialog.h"
 #include "util/json_helpers.h"
+#include <cerrno>
+#include <climits>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <unistd.h>
 
 namespace grex {
 
@@ -122,6 +126,124 @@ ConfigView::ConfigView(Project& project) : project_(project) {
     gtk_grid_set_row_spacing(GTK_GRID(vars_grid_), 10);
     gtk_grid_set_column_spacing(GTK_GRID(vars_grid_), 16);
     gtk_box_append(GTK_BOX(vars_box), vars_grid_);
+
+    // --- Current Working Directory subsection ---
+    gtk_box_append(GTK_BOX(vars_box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+    auto* cwd_label = gtk_label_new(nullptr);
+    gtk_label_set_markup(GTK_LABEL(cwd_label), "<b>Current Working Directory</b>");
+    gtk_label_set_xalign(GTK_LABEL(cwd_label), 0.0f);
+    gtk_box_append(GTK_BOX(vars_box), cwd_label);
+
+    auto* cwd_desc = gtk_label_new("Set the working directory for this session. Relative paths in unit validation resolve against this.");
+    gtk_label_set_xalign(GTK_LABEL(cwd_desc), 0.0f);
+    gtk_label_set_wrap(GTK_LABEL(cwd_desc), TRUE);
+    gtk_widget_add_css_class(cwd_desc, "dim-label");
+    gtk_box_append(GTK_BOX(vars_box), cwd_desc);
+
+    auto* cwd_grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(cwd_grid), 8);
+    gtk_grid_set_column_spacing(GTK_GRID(cwd_grid), 12);
+
+    auto* cwd_key = gtk_label_new("Directory");
+    gtk_label_set_xalign(GTK_LABEL(cwd_key), 1.0f);
+    gtk_widget_set_size_request(cwd_key, 140, -1);
+    gtk_widget_add_css_class(cwd_key, "dim-label");
+    gtk_grid_attach(GTK_GRID(cwd_grid), cwd_key, 0, 0, 1, 1);
+
+    auto* cwd_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    gtk_widget_set_hexpand(cwd_hbox, TRUE);
+
+    char cwd_buf[PATH_MAX];
+    const char* initial_cwd = getcwd(cwd_buf, sizeof(cwd_buf));
+    cwd_entry_ = gtk_entry_new();
+    gtk_widget_set_hexpand(cwd_entry_, TRUE);
+    gtk_editable_set_text(GTK_EDITABLE(cwd_entry_), initial_cwd ? initial_cwd : "");
+    gtk_box_append(GTK_BOX(cwd_hbox), cwd_entry_);
+
+    auto* cwd_browse = gtk_button_new_with_label("Browse...");
+    gtk_box_append(GTK_BOX(cwd_hbox), cwd_browse);
+
+    auto* cwd_apply = gtk_button_new_with_label("Apply");
+    gtk_box_append(GTK_BOX(cwd_hbox), cwd_apply);
+
+    gtk_grid_attach(GTK_GRID(cwd_grid), cwd_hbox, 1, 0, 1, 1);
+
+    cwd_status_ = gtk_label_new(nullptr);
+    gtk_label_set_xalign(GTK_LABEL(cwd_status_), 0.0f);
+    gtk_widget_add_css_class(cwd_status_, "dim-label");
+    gtk_grid_attach(GTK_GRID(cwd_grid), cwd_status_, 1, 1, 1, 1);
+
+    gtk_box_append(GTK_BOX(vars_box), cwd_grid);
+
+    // Apply button — chdir and report
+    g_signal_connect(cwd_apply, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
+        auto* self = static_cast<ConfigView*>(d);
+        auto dir = std::string(gtk_editable_get_text(GTK_EDITABLE(self->cwd_entry_)));
+        if (dir.empty()) {
+            self->project_.report_status("Error: working directory is empty");
+            return;
+        }
+        if (chdir(dir.c_str()) == 0) {
+            char buf[PATH_MAX];
+            const char* actual = getcwd(buf, sizeof(buf));
+            gtk_editable_set_text(GTK_EDITABLE(self->cwd_entry_), actual ? actual : dir.c_str());
+            gtk_label_set_text(GTK_LABEL(self->cwd_status_), "");
+            self->project_.report_status("Working directory set to: " + std::string(actual ? actual : dir.c_str()));
+            self->update_resolved_labels();
+        } else {
+            auto msg = "Error: cannot chdir to '" + dir + "': " + std::string(strerror(errno));
+            self->project_.report_status(msg);
+            gtk_label_set_markup(GTK_LABEL(self->cwd_status_),
+                ("<span foreground=\"#cc0000\">" + msg + "</span>").c_str());
+        }
+    }), this);
+
+    // Browse button — folder chooser
+    g_signal_connect(cwd_browse, "clicked", G_CALLBACK(+[](GtkButton*, gpointer d) {
+        auto* self = static_cast<ConfigView*>(d);
+        auto* window = GTK_WINDOW(gtk_widget_get_ancestor(self->root_, GTK_TYPE_WINDOW));
+        auto* dialog = gtk_file_dialog_new();
+        gtk_file_dialog_set_title(dialog, "Select Working Directory");
+
+        struct CwdBrowseCtx { ConfigView* view; };
+        auto* ctx = new CwdBrowseCtx{self};
+        gtk_file_dialog_select_folder(dialog, window, nullptr,
+            +[](GObject* source, GAsyncResult* res, gpointer data) {
+                auto* ctx = static_cast<CwdBrowseCtx*>(data);
+                GError* error = nullptr;
+                auto* file = gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source), res, &error);
+                if (file) {
+                    auto* path = g_file_get_path(file);
+                    gtk_editable_set_text(GTK_EDITABLE(ctx->view->cwd_entry_), path);
+                    g_free(path);
+                    g_object_unref(file);
+                } else if (error) {
+                    g_error_free(error);
+                }
+                delete ctx;
+            }, ctx);
+    }), this);
+
+    // Enter in entry triggers apply
+    g_signal_connect(cwd_entry_, "activate", G_CALLBACK(+[](GtkEntry*, gpointer d) {
+        auto* self = static_cast<ConfigView*>(d);
+        auto dir = std::string(gtk_editable_get_text(GTK_EDITABLE(self->cwd_entry_)));
+        if (dir.empty()) return;
+        if (chdir(dir.c_str()) == 0) {
+            char buf[PATH_MAX];
+            const char* actual = getcwd(buf, sizeof(buf));
+            gtk_editable_set_text(GTK_EDITABLE(self->cwd_entry_), actual ? actual : dir.c_str());
+            gtk_label_set_text(GTK_LABEL(self->cwd_status_), "");
+            self->project_.report_status("Working directory set to: " + std::string(actual ? actual : dir.c_str()));
+            self->update_resolved_labels();
+        } else {
+            auto msg = "Error: cannot chdir to '" + dir + "': " + std::string(strerror(errno));
+            self->project_.report_status(msg);
+            gtk_label_set_markup(GTK_LABEL(self->cwd_status_),
+                ("<span foreground=\"#cc0000\">" + msg + "</span>").c_str());
+        }
+    }), this);
 
     gtk_frame_set_child(GTK_FRAME(vars_frame), vars_box);
     gtk_box_append(GTK_BOX(config_content_), vars_frame);
@@ -297,14 +419,12 @@ void ConfigView::update_resolved_labels() {
         // Status indicator
         bool path_ok = (display != "(unresolved)") &&
                        (std::filesystem::exists(display) || std::filesystem::is_directory(display));
-        auto* indicator = gtk_label_new(nullptr);
+        auto* indicator = gtk_label_new(path_ok ? "OK" : "ERR");
         gtk_label_set_xalign(GTK_LABEL(indicator), 0.5f);
-        if (display == "(unresolved)")
-            gtk_label_set_markup(GTK_LABEL(indicator), "<span foreground=\"#cc0000\">\u2718</span>");
-        else if (path_ok)
-            gtk_label_set_markup(GTK_LABEL(indicator), "<span foreground=\"#4e9a06\">\u2714</span>");
+        if (path_ok)
+            gtk_widget_add_css_class(indicator, "success");
         else
-            gtk_label_set_markup(GTK_LABEL(indicator), "<span foreground=\"#cc0000\">\u2718</span>");
+            gtk_widget_add_css_class(indicator, "error");
         gtk_grid_attach(GTK_GRID(resolved_grid_), indicator, 1, row, 1, 1);
 
         auto* val_label = gtk_label_new(nullptr);

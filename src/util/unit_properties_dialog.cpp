@@ -96,6 +96,11 @@ struct DialogState {
 static void update_sensitivity(DialogState* s);
 static void validate_fields(DialogState* s);
 
+static std::string extract_path(const std::string& s) {
+    auto pos = s.find(' ');
+    return pos == std::string::npos ? s : s.substr(0, pos);
+}
+
 static gboolean dlg_switch_state_set_cb(GtkSwitch* sw, gboolean new_state, gpointer data) {
     auto* b = static_cast<DlgSwitchBinding*>(data);
     gtk_switch_set_state(sw, new_state);
@@ -277,7 +282,7 @@ static GtkWidget* make_file_row(DialogState* s, GtkWidget* grid, int row, const 
             return;
         }
         namespace fs = std::filesystem;
-        fs::path p(raw);
+        fs::path p(extract_path(raw));
         if (p.is_relative()) {
             auto root = fbd->state->project->resolved_project_root();
             if (!root.empty())
@@ -363,11 +368,6 @@ static void update_sensitivity(DialogState* s) {
     show(active && s->working_copy.rectify, {s->label_rectifier, s->box_rectifier});
     show(active && s->working_copy.set_user_context, {s->label_user, s->entry_user, s->label_group, s->entry_group});
     show(active && s->working_copy.supply_environment, {s->label_environment, s->box_environment});
-}
-
-static std::string extract_path(const std::string& s) {
-    auto pos = s.find(' ');
-    return pos == std::string::npos ? s : s.substr(0, pos);
 }
 
 static void validate_fields(DialogState* s) {
