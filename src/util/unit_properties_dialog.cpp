@@ -365,6 +365,11 @@ static void update_sensitivity(DialogState* s) {
     show(active && s->working_copy.supply_environment, {s->label_environment, s->box_environment});
 }
 
+static std::string extract_path(const std::string& s) {
+    auto pos = s.find(' ');
+    return pos == std::string::npos ? s : s.substr(0, pos);
+}
+
 static void validate_fields(DialogState* s) {
     if (s->loading) return;
 
@@ -386,12 +391,15 @@ static void validate_fields(DialogState* s) {
         if (u.target.empty()) {
             valid = false;
             if (error_msg.empty()) error_msg = "Target is not defined";
-        } else if (!fs::exists(u.target)) {
-            valid = false;
-            if (error_msg.empty()) error_msg = "Target does not exist: " + u.target;
-        } else if (access(u.target.c_str(), X_OK) != 0) {
-            valid = false;
-            if (error_msg.empty()) error_msg = "Target is not executable: " + u.target;
+        } else {
+            auto tp = extract_path(u.target);
+            if (!fs::exists(tp)) {
+                valid = false;
+                if (error_msg.empty()) error_msg = "Target does not exist: " + tp;
+            } else if (access(tp.c_str(), X_OK) != 0) {
+                valid = false;
+                if (error_msg.empty()) error_msg = "Target is not executable: " + tp;
+            }
         }
         set_valid(s->entry_target, valid);
     }
@@ -430,12 +438,15 @@ static void validate_fields(DialogState* s) {
         if (u.rectifier.empty()) {
             valid = false;
             if (error_msg.empty()) error_msg = "Rectifier is not defined";
-        } else if (!fs::exists(u.rectifier)) {
-            valid = false;
-            if (error_msg.empty()) error_msg = "Rectifier does not exist: " + u.rectifier;
-        } else if (access(u.rectifier.c_str(), X_OK) != 0) {
-            valid = false;
-            if (error_msg.empty()) error_msg = "Rectifier is not executable: " + u.rectifier;
+        } else {
+            auto rp = extract_path(u.rectifier);
+            if (!fs::exists(rp)) {
+                valid = false;
+                if (error_msg.empty()) error_msg = "Rectifier does not exist: " + rp;
+            } else if (access(rp.c_str(), X_OK) != 0) {
+                valid = false;
+                if (error_msg.empty()) error_msg = "Rectifier is not executable: " + rp;
+            }
         }
         set_valid(s->entry_rectifier, valid);
     } else {
@@ -448,9 +459,12 @@ static void validate_fields(DialogState* s) {
         if (u.environment.empty()) {
             valid = false;
             if (error_msg.empty()) error_msg = "Environment file is not defined";
-        } else if (!fs::exists(u.environment)) {
-            valid = false;
-            if (error_msg.empty()) error_msg = "Environment file does not exist: " + u.environment;
+        } else {
+            auto ep = extract_path(u.environment);
+            if (!fs::exists(ep)) {
+                valid = false;
+                if (error_msg.empty()) error_msg = "Environment file does not exist: " + ep;
+            }
         }
         set_valid(s->entry_environment, valid);
     } else {

@@ -51,6 +51,12 @@ fs::path Project::resolved_shells_path() const {
     return root / sp;
 }
 
+// Extract the file path portion before any arguments
+static std::string extract_path(const std::string& s) {
+    auto pos = s.find(' ');
+    return pos == std::string::npos ? s : s.substr(0, pos);
+}
+
 bool Project::check_unit_valid(const Unit& u) {
     namespace fs = std::filesystem;
 
@@ -58,12 +64,13 @@ bool Project::check_unit_valid(const Unit& u) {
         report_status("Unit '" + u.name + "': target is not defined");
         return false;
     }
-    if (!fs::exists(u.target)) {
-        report_status("Unit '" + u.name + "': target does not exist: " + u.target);
+    auto target_path = extract_path(u.target);
+    if (!fs::exists(target_path)) {
+        report_status("Unit '" + u.name + "': target does not exist: " + target_path);
         return false;
     }
-    if (access(u.target.c_str(), X_OK) != 0) {
-        report_status("Unit '" + u.name + "': target is not executable: " + u.target);
+    if (access(target_path.c_str(), X_OK) != 0) {
+        report_status("Unit '" + u.name + "': target is not executable: " + target_path);
         return false;
     }
 
@@ -94,12 +101,13 @@ bool Project::check_unit_valid(const Unit& u) {
             report_status("Unit '" + u.name + "': rectifier is not defined");
             return false;
         }
-        if (!fs::exists(u.rectifier)) {
-            report_status("Unit '" + u.name + "': rectifier does not exist: " + u.rectifier);
+        auto rectifier_path = extract_path(u.rectifier);
+        if (!fs::exists(rectifier_path)) {
+            report_status("Unit '" + u.name + "': rectifier does not exist: " + rectifier_path);
             return false;
         }
-        if (access(u.rectifier.c_str(), X_OK) != 0) {
-            report_status("Unit '" + u.name + "': rectifier is not executable: " + u.rectifier);
+        if (access(rectifier_path.c_str(), X_OK) != 0) {
+            report_status("Unit '" + u.name + "': rectifier is not executable: " + rectifier_path);
             return false;
         }
     }
@@ -109,8 +117,9 @@ bool Project::check_unit_valid(const Unit& u) {
             report_status("Unit '" + u.name + "': environment file is not defined");
             return false;
         }
-        if (!fs::exists(u.environment)) {
-            report_status("Unit '" + u.name + "': environment file does not exist: " + u.environment);
+        auto env_path = extract_path(u.environment);
+        if (!fs::exists(env_path)) {
+            report_status("Unit '" + u.name + "': environment file does not exist: " + env_path);
             return false;
         }
     }
